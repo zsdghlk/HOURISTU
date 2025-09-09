@@ -1,0 +1,16 @@
+cat > index.html <<'HTML'
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>日本国憲法｜やさしい解説つき</title>
+<body style="font-family:system-ui;max-width:900px;margin:auto;padding:16px">
+<h1>読み込みテスト</h1>
+<p>このページが見えればHTMLは置けています。</p>
+<script>
+fetch('./data/kenpo.json',{cache:'no-store'})
+  .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+  .then(j=>{ document.body.insertAdjacentHTML('beforeend','<pre>'+JSON.stringify(j,null,2)+'</pre>'); })
+  .catch(e=>{ document.body.insertAdjacentHTML('beforeend','<p style="color:red">読み込みエラー: '+e.message+'</p>'); });
+</script>
+</body></html>
+HTML
