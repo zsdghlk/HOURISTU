@@ -8,12 +8,12 @@
   /* ===== 配色（ライト/ダーク自動） ===== */
   :root{
     --fg:#101114; --bg:#ffffff; --muted:#6b7280; --card:#f5f7fa; --accent:#0b57d0;
-    --ring:#d0d7de;
+    --ring:#d0d7de; --mark:#fff59d;
   }
   @media (prefers-color-scheme: dark){
     :root{
       --fg:#e7e7ea; --bg:#0f1115; --muted:#9aa0a6; --card:#171a21; --accent:#7aa2ff;
-      --ring:#30363d;
+      --ring:#30363d; --mark:#665c00;
     }
   }
 
@@ -52,7 +52,8 @@
   .article{
     padding:14px; border-radius:14px; background:var(--card); margin:12px 0; border:1px solid var(--ring);
   }
-  .art-head{display:flex; justify-content:space-between; gap:8px; align-items:center}
+  .art-head{display:flex; gap:8px; align-items:center}
+  .art-head .spacer{flex:1}
   .art-no{font-weight:700}
   .block{margin:10px 0; padding:12px; border-radius:12px; background:#00000008}
   .block.original{border-left:4px solid #9ca3af}
@@ -60,6 +61,9 @@
   .muted{color:var(--muted); font-size:14px}
   .toc{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0}
   .toc a{padding:6px 10px; border:1px solid var(--ring); border-radius:999px; text-decoration:none}
+  .chips{display:flex; flex-wrap:wrap; gap:6px}
+  .chip{padding:2px 8px; border:1px solid var(--ring); border-radius:999px; font-size:12px}
+  mark{background:var(--mark); padding:0 .1em; border-radius:.2em}
 
   /* ===== 小画面最適化 ===== */
   @media (max-width: 640px){
@@ -82,6 +86,7 @@
     <div class="row">
       <strong>日本国憲法（原文／やさしい文）</strong>
       <span class="badge" id="meta"></span>
+      <span class="badge" id="hit"></span>
     </div>
     <div class="row" style="margin-top:6px">
       <div class="modebtns" role="group" aria-label="表示切替">
@@ -89,7 +94,7 @@
         <button id="m-both"   aria-pressed="false">両方</button>
         <button id="m-orig"   aria-pressed="false">原文のみ</button>
       </div>
-      <input id="q" type="search" placeholder="検索（原文・やさしい文・条番号）" autocomplete="off" enterkeyhint="search">
+      <input id="q" type="search" placeholder="検索（例：戦争放棄  /  tag:人権  /  ch:第二章  /  art:第9条  /  -検閲）" autocomplete="off" enterkeyhint="search">
       <select id="goto" aria-label="条番号へ移動"></select>
       <button id="go">移動</button>
     </div>
@@ -105,7 +110,12 @@
 </div>
 
 <script>
-const state = { mode: 'easy', data: null, flat: [] };
+const state = {
+  mode: 'easy',
+  data: null,         // 期待形: {law, version, chapters:[{title, articles:[{id,no,original,easy,tags[]}]}]}
+  flat: [],           // 目次用
+  search: null        // {docs:[{id,no,chapter,tags[],text}], index:{token:[id,...]}} | null
+};
 
 /* ===== UI: モード切替 ===== */
 const setMode = (m)=>{
@@ -113,7 +123,7 @@ const setMode = (m)=>{
   for (const id of ['m-easy','m-both','m-orig']){
     document.getElementById(id).setAttribute('aria-pressed', id==='m-'+m ? 'true':'false');
   }
-  render();
+  render(document.getElementById('q').value.trim());
 };
 document.getElementById('m-easy').onclick = ()=>setMode('easy');
 document.getElementById('m-both').onclick = ()=>setMode('both');
@@ -126,36 +136,48 @@ document.getElementById('go').onclick = ()=>{
 };
 
 /* ===== UI: 検索 ===== */
-document.getElementById('q').addEventListener('input', (e)=> render(e.target.value.trim()));
+const $q = document.getElementById('q');
+$q.addEventListener('input', (e)=> render(e.target.value.trim()));
+$q.addEventListener('keydown', (e)=>{ if(e.key==='Enter') render($q.value.trim()); });
 
-/* ===== データ読み込み ===== */
+/* ===== データ読み込み（indexがあれば優先） ===== */
 async function load(){
   try{
-    const res = await fetch('./data/kenpo.json',{cache:'no-store'});
-    if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const raw = await res.json();
+    // index & tagged の組み合わせがあれば利用
+    const idxRes = await fetch('./data/kenpo.index.json',{cache:'no-store'});
+    if (idxRes.ok){
+      const idx = await idxRes.json();
+      const lawRes = await fetch('./data/kenpo.tagged.json',{cache:'no-store'});
+      const law = await lawRes.json();
+      state.data = normalizeLawData(law);
+      state.search = { docs: idx.docs, index: idx.index };
+    } else {
+      // フォールバック：kenpo.json のみ
+      const res = await fetch('./data/kenpo.json',{cache:'no-store'});
+      if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const raw = await res.json();
+      state.data = normalizeLawData(raw);
+      state.search = null;
+    }
 
-    // ▼ 形の揺れを正規化
-    state.data = normalizeLawData(raw);
-
-    // ▼ メタ表示（undefined防止）
+    // メタ表示
     document.getElementById('meta').textContent =
       `${state.data.law || '日本国憲法'} / 更新: ${state.data.version || '-'}`;
 
-    // ▼ 目次（章＋条番号）
+    // 目次
     state.flat = [];
     for (const ch of state.data.chapters){
       for (const a of ch.articles){
-        state.flat.push({ chapter: ch.title, no: a.no });
+        state.flat.push({ chapter: ch.title, no: a.no, id: a.id });
       }
     }
     const sel = document.getElementById('goto');
     sel.innerHTML = '<option value="">条番号へ移動</option>' +
-      state.flat.map(x=>`<option value="${x.no}">${x.no}（${x.chapter}）</option>`).join('');
+      state.flat.map(x=>`<option value="${escapeHtml(x.no)}">${escapeHtml(x.no)}（${escapeHtml(x.chapter)}）</option>`).join('');
 
-    render();
+    render($q.value.trim());
 
-    // ハッシュがあればスクロール
+    // ハッシュスクロール
     if (location.hash) {
       const id = decodeURIComponent(location.hash.slice(1));
       const el = document.getElementById(id);
@@ -168,24 +190,28 @@ async function load(){
 }
 
 /* ===== データ正規化 =====
-  期待形:
-  {
-    law, version,
-    chapters: [{ title, articles:[{ no, original, easy }] }]
-  }
+  入力のゆれを吸収して以下に整形：
+  { law, version, chapters:[{ title, articles:[{ id, no, original, easy, tags, keywords }] }] }
 */
 function normalizeLawData(data){
-  // 1) 行配列（旧形）に対応
-  //   例: [{ chapter, article/num/no, text/original, easy/textEasy }, ...]
+  // 1) 行配列 → 章ごとにまとめる
   if (Array.isArray(data)) {
     const map = new Map();
     for (const row of data){
       const chTitle = row.chapter ?? row.title ?? '（章）';
       const art = {
+        id: row.id ?? '',
         no: row.no ?? row.num ?? row.article ?? '',
         original: row.original ?? row.text ?? '',
-        easy: row.easy ?? row.textEasy ?? ''
+        easy: row.easy ?? row.textEasy ?? '',
+        tags: Array.isArray(row.tags) ? row.tags : [],
+        keywords: Array.isArray(row.keywords) ? row.keywords : []
       };
+      if (!art.id){
+        const chNum = chTitle.match(/第(.+?)章/)?.[1] ?? '前';
+        const artNum = art.no.match(/第(.+?)条/)?.[1] ?? '文';
+        art.id = `${chNum}-${artNum}`;
+      }
       if (!map.has(chTitle)) map.set(chTitle, []);
       map.get(chTitle).push(art);
     }
@@ -196,17 +222,28 @@ function normalizeLawData(data){
     };
   }
 
-  // 2) オブジェクト（chaptersあり）
+  // 2) chapters を持つオブジェクト
   if (data && Array.isArray(data.chapters)){
     const law   = data.law ?? data.lawName ?? data.lawId ?? '日本国憲法';
     const ver   = data.version ?? data.update ?? '';
     const chs = data.chapters.map(ch => {
       const title = ch.title ?? ch.chapter ?? '（章）';
-      const arts = (ch.articles ?? []).map(a => ({
-        no: a.no ?? a.num ?? a.article ?? '',
-        original: a.original ?? a.text ?? '',
-        easy: a.easy ?? a.textEasy ?? ''
-      }));
+      const arts = (ch.articles ?? []).map(a => {
+        const art = {
+          id: a.id ?? '',
+          no: a.no ?? a.num ?? a.article ?? '',
+          original: a.original ?? a.text ?? '',
+          easy: a.easy ?? a.textEasy ?? '',
+          tags: Array.isArray(a.tags) ? a.tags : [],
+          keywords: Array.isArray(a.keywords) ? a.keywords : []
+        };
+        if (!art.id){
+          const chNum = title.match(/第(.+?)章/)?.[1] ?? '前';
+          const artNum = art.no.match(/第(.+?)条/)?.[1] ?? '文';
+          art.id = `${chNum}-${artNum}`;
+        }
+        return art;
+      });
       return { title, articles: arts };
     });
     return { law, version: ver, chapters: chs };
@@ -216,11 +253,93 @@ function normalizeLawData(data){
   return { law: '日本国憲法', version: '', chapters: [] };
 }
 
-/* ===== 検索マッチ ===== */
-function matches(a, q){
+/* ===== 検索：クエリ解析（AND / 除外 / tag / ch / art） ===== */
+function parseQuery(q){
+  const terms = (q||"").trim().split(/\s+/).filter(Boolean);
+  const inc = [], exc = [], filters = { tag:[], ch:[], art:[] };
+  for (const t of terms){
+    if (t.startsWith('-')) { exc.push(t.slice(1)); continue; }
+    const m = t.match(/^(tag|ch|art):(.*)$/i);
+    if (m) { filters[m[1]].push(m[2]); continue; }
+    inc.push(t);
+  }
+  return { inc, exc, filters, raw:q };
+}
+
+/* ===== 正規化（ひら→カナ・全角→半角・小文字化） ===== */
+function norm(s=""){
+  return s.toLowerCase()
+    .replace(/[ぁ-ゖ]/g, ch => String.fromCharCode(ch.charCodeAt(0)+0x60))
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+}
+
+/* ===== インデックス検索（あれば高速） ===== */
+function searchDocIds(qobj){
+  if (!state.search) return null; // フォールバック運用
+  const {index, docs} = state.search;
+  const requireSets = [];
+
+  // 必須語（AND）
+  for (const t of qobj.inc){
+    const tok = norm(t);
+    const ids = index[tok];
+    if (!ids) return []; // 未ヒットで即空
+    requireSets.push(new Set(ids));
+  }
+
+  // AND交差
+  let cand = new Set(docs.map(d=>d.id));
+  for (const s of requireSets){
+    cand = new Set([...cand].filter(x => s.has(x)));
+  }
+
+  // 除外語
+  for (const t of qobj.exc){
+    const ids = index[norm(t)] || [];
+    for (const id of ids) cand.delete(id);
+  }
+
+  // tag/ch/art フィルタ
+  const byId = Object.fromEntries(docs.map(d=>[d.id,d]));
+  function matchFilters(d){
+    const f = qobj.filters;
+    if (f.tag.length && !f.tag.every(t => (d.tags||[]).some(x=>x.includes(t)))) return false;
+    if (f.ch.length && !f.ch.every(t => d.chapter.includes(t))) return false;
+    if (f.art.length && !f.art.every(t => d.no.includes(t))) return false;
+    return true;
+  }
+  cand = new Set([...cand].filter(id => matchFilters(byId[id])));
+
+  return [...cand];
+}
+
+/* ===== フォールバック用の簡易マッチ ===== */
+function matchesSimple(a, q, chTitle){
   if (!q) return true;
-  q = q.toLowerCase();
-  return (String(a.no) + ' ' + String(a.original) + ' ' + String(a.easy)).toLowerCase().includes(q);
+  const {inc, exc, filters} = parseQuery(q);
+  const hay = (String(a.no) + ' ' + String(a.original) + ' ' + String(a.easy)).toLowerCase();
+  // 必須語
+  for (const t of inc){ if (!hay.includes(t.toLowerCase())) return false; }
+  // 除外語
+  for (const t of exc){ if (hay.includes(t.toLowerCase())) return false; }
+  // フィルタ
+  if (filters.tag.length && !filters.tag.every(t => (a.tags||[]).some(x=>x.includes(t)))) return false;
+  if (filters.ch.length && !filters.ch.every(t => (chTitle||"").includes(t))) return false;
+  if (filters.art.length && !filters.art.every(t => (a.no||"").includes(t))) return false;
+  return true;
+}
+
+/* ===== ハイライト ===== */
+function highlight(text, q){
+  if (!q) return escapeHtml(text);
+  const terms = q.split(/\s+/).filter(t => !/^(-|tag:|ch:|art:)/i.test(t));
+  if (!terms.length) return escapeHtml(text);
+  let html = escapeHtml(text);
+  for (const t of terms){
+    const safe = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    html = html.replace(new RegExp(`(${safe})`,"gi"), '<mark>$1</mark>');
+  }
+  return html;
 }
 
 /* ===== 描画 ===== */
@@ -228,10 +347,22 @@ function render(q=''){
   const app = document.getElementById('app');
   if (!state.data){ app.innerHTML = '<p>読み込み中…</p>'; return; }
 
+  const qobj = parseQuery(q);
+  const allowedIds = searchDocIds(qobj); // null=フォールバック, []=0件, [...]=id群
+
+  const allow = (a, chTitle) => {
+    if (allowedIds === null) {
+      return matchesSimple(a, q, chTitle);
+    }
+    return allowedIds.includes(a.id);
+  };
+
+  let hitCount = 0;
   const parts = [];
   for (const ch of state.data.chapters){
-    const visArts = ch.articles.filter(a => matches(a, q));
+    const visArts = ch.articles.filter(a => allow(a, ch.title));
     if (visArts.length===0) continue;
+    hitCount += visArts.length;
 
     parts.push(`<section class="chapter">
       <h2>${escapeHtml(ch.title)}</h2>
@@ -242,31 +373,39 @@ function render(q=''){
 
     for (const a of visArts){
       const id = encodeURIComponent(a.no);
+      const tags = (a.tags||[]).map(t=>`<span class="chip">
+        <a href="#tag:${encodeURIComponent(t)}" onclick="applyTag('${escapeAttr(t)}'); return false;">#${escapeHtml(t)}</a>
+      </span>`).join('');
+
       const head = `
         <div class="art-head">
           <div class="art-no" id="${id}">${escapeHtml(a.no)}</div>
+          <div class="chips">${tags}</div>
+          <div class="spacer"></div>
           <a class="muted" href="#${id}" title="リンク">#</a>
         </div>`;
 
       let body = '';
       if (state.mode==='easy'){
-        body = `<div class="block easy"><div>${escapeHtml(a.easy || '（やさしい日本語の準備中）')}</div></div>`;
+        body = `<div class="block easy"><div>${a.easy ? highlight(a.easy,q) : '（やさしい日本語の準備中）'}</div></div>`;
       } else if (state.mode==='orig'){
-        body = `<div class="block original"><div>${escapeHtml(a.original || '')}</div></div>`;
+        body = `<div class="block original"><div>${highlight(a.original||'', q)}</div></div>`;
       } else {
         body = `
-          <div class="block easy"><strong>やさしい文</strong><div>${escapeHtml(a.easy || '（やさしい日本語の準備中）')}</div></div>
-          <div class="block original"><strong>原文</strong><div>${escapeHtml(a.original || '')}</div></div>`;
+          <div class="block easy"><strong>やさしい文</strong><div>${a.easy ? highlight(a.easy,q) : '（やさしい日本語の準備中）'}</div></div>
+          <div class="block original"><strong>原文</strong><div>${highlight(a.original||'', q)}</div></div>`;
       }
 
       parts.push(`<article class="article">${head}${body}</article>`);
     }
     parts.push(`</section>`);
   }
+
+  document.getElementById('hit').textContent = hitCount ? `ヒット: ${hitCount}` : '';
   app.innerHTML = parts.join('') || `<p>該当なし（検索ワードを変えてください）</p>`;
 }
 
-/* ===== HTMLエスケープ（修正版） ===== */
+/* ===== HTMLエスケープ ===== */
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m => ({
     '&':'&amp;',
@@ -276,8 +415,16 @@ function escapeHtml(s){
     "'":'&#39;'
   }[m]));
 }
+function escapeAttr(s){ return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
-/* 起動 */
+/* ===== タグクリック適用 ===== */
+function applyTag(tag){
+  const q = `tag:${tag}`;
+  document.getElementById('q').value = q;
+  render(q);
+}
+
+/* ===== 起動 ===== */
 load();
 </script>
 </body>
