@@ -1,0 +1,17 @@
+{
+  "name": "houristu",
+  "version": "1.0.0",
+  "description": "```textkenpo-site/ ├─ index.html        ← 閲覧ページ（原文/やさしい文 切替・検索・目次） ├─ data/ │  └─ kenpo.json     ← 憲法のデータ（原文＋やさしい文） └─ tools/    └─ maker.html     ← データ作成用ミニツール（ブラウザ上でJSON追記）",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "xmldom": "^0.6.0",
+    "xpath": "^0.0.34"
+  }
+}
