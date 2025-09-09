@@ -1,17 +1,18 @@
 {
   "name": "houristu",
   "version": "1.0.0",
-  "description": "```textkenpo-site/ ├─ index.html        ← 閲覧ページ（原文/やさしい文 切替・検索・目次） ├─ data/ │  └─ kenpo.json     ← 憲法のデータ（原文＋やさしい文） └─ tools/    └─ maker.html     ← データ作成用ミニツール（ブラウザ上でJSON追記）",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
+  "description": "憲法サイト: index.html（閲覧/検索）、data/kenpo.json、tools/maker.html",
+  "type": "module",
   "license": "ISC",
+  "author": "",
+  "scripts": {
+    "validate": "node scripts/validate-law.js",
+    "tags": "node scripts/add-tags.js",
+    "index": "node scripts/build-index.js"
+  },
   "dependencies": {
     "node-fetch": "^3.3.2",
     "xmldom": "^0.6.0",
-    "xpath": "^0.0.34"
+    "xpath": "0.0.34"
   }
 }
