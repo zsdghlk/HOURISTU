@@ -1,4 +1,3 @@
-cat > index.html <<'HTML'
 <!doctype html>
 <html lang="ja">
 <head>
@@ -6,7 +5,7 @@ cat > index.html <<'HTML'
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>日本国憲法｜やさしい解説つき</title>
 <style>
-  /* ===== 基本配色（ライト/ダーク自動） ===== */
+  /* ===== 配色（ライト/ダーク自動） ===== */
   :root{
     --fg:#101114; --bg:#ffffff; --muted:#6b7280; --card:#f5f7fa; --accent:#0b57d0;
     --ring:#d0d7de;
@@ -18,7 +17,7 @@ cat > index.html <<'HTML'
     }
   }
 
-  /* ===== リセット & ベース ===== */
+  /* ===== ベース ===== */
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -37,10 +36,10 @@ cat > index.html <<'HTML'
   .wrap{max-width:860px; margin:auto; padding:12px 16px}
   .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
 
-  /* ===== フォーム/ボタン（タッチ最適化） ===== */
+  /* ===== フォーム/ボタン ===== */
   input,select,button{
     font:inherit; padding:12px 14px; border:1px solid var(--ring); border-radius:12px;
-    background:transparent; color:var(--fg); min-height:44px;  /* 親指で押しやすく */
+    background:transparent; color:var(--fg); min-height:44px;
   }
   input[type="search"]{flex:1; min-width:180px}
   button{cursor:pointer}
@@ -62,7 +61,7 @@ cat > index.html <<'HTML'
   .toc{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0}
   .toc a{padding:6px 10px; border:1px solid var(--ring); border-radius:999px; text-decoration:none}
 
-  /* ===== 小さい画面向けの最適化 ===== */
+  /* ===== 小画面最適化 ===== */
   @media (max-width: 640px){
     .wrap{padding:12px}
     h1,strong{font-size:18px}
@@ -71,7 +70,7 @@ cat > index.html <<'HTML'
     input[type="search"]{min-width:120px}
   }
 
-  /* ===== 動きを控えめに（好み設定尊重） ===== */
+  /* ===== 動きを控えめに ===== */
   @media (prefers-reduced-motion: reduce){
     *{scroll-behavior:auto; animation:none; transition:none}
   }
@@ -108,6 +107,7 @@ cat > index.html <<'HTML'
 <script>
 const state = { mode: 'easy', data: null, flat: [] };
 
+/* ===== UI: モード切替 ===== */
 const setMode = (m)=>{
   state.mode = m;
   for (const id of ['m-easy','m-both','m-orig']){
@@ -115,25 +115,34 @@ const setMode = (m)=>{
   }
   render();
 };
-
 document.getElementById('m-easy').onclick = ()=>setMode('easy');
 document.getElementById('m-both').onclick = ()=>setMode('both');
 document.getElementById('m-orig').onclick = ()=>setMode('orig');
 
+/* ===== UI: ジャンプ ===== */
 document.getElementById('go').onclick = ()=>{
   const val = document.getElementById('goto').value;
   if (val){ location.hash = encodeURIComponent(val); }
 };
 
+/* ===== UI: 検索 ===== */
 document.getElementById('q').addEventListener('input', (e)=> render(e.target.value.trim()));
 
+/* ===== データ読み込み ===== */
 async function load(){
   try{
     const res = await fetch('./data/kenpo.json',{cache:'no-store'});
     if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    state.data = await res.json();
-    document.getElementById('meta').textContent = `${state.data.law} / 更新: ${state.data.version}`;
-    // 目次
+    const raw = await res.json();
+
+    // ▼ 形の揺れを正規化
+    state.data = normalizeLawData(raw);
+
+    // ▼ メタ表示（undefined防止）
+    document.getElementById('meta').textContent =
+      `${state.data.law || '日本国憲法'} / 更新: ${state.data.version || '-'}`;
+
+    // ▼ 目次（章＋条番号）
     state.flat = [];
     for (const ch of state.data.chapters){
       for (const a of ch.articles){
@@ -143,7 +152,10 @@ async function load(){
     const sel = document.getElementById('goto');
     sel.innerHTML = '<option value="">条番号へ移動</option>' +
       state.flat.map(x=>`<option value="${x.no}">${x.no}（${x.chapter}）</option>`).join('');
+
     render();
+
+    // ハッシュがあればスクロール
     if (location.hash) {
       const id = decodeURIComponent(location.hash.slice(1));
       const el = document.getElementById(id);
@@ -151,16 +163,67 @@ async function load(){
     }
   }catch(e){
     console.error(e);
-    document.getElementById('app').innerHTML = `<p style="color:#c00">読み込みエラー: ${e.message}</p>`;
+    document.getElementById('app').innerHTML = `<p style="color:#c00">読み込みエラー: ${escapeHtml(e.message)}</p>`;
   }
 }
 
+/* ===== データ正規化 =====
+  期待形:
+  {
+    law, version,
+    chapters: [{ title, articles:[{ no, original, easy }] }]
+  }
+*/
+function normalizeLawData(data){
+  // 1) 行配列（旧形）に対応
+  //   例: [{ chapter, article/num/no, text/original, easy/textEasy }, ...]
+  if (Array.isArray(data)) {
+    const map = new Map();
+    for (const row of data){
+      const chTitle = row.chapter ?? row.title ?? '（章）';
+      const art = {
+        no: row.no ?? row.num ?? row.article ?? '',
+        original: row.original ?? row.text ?? '',
+        easy: row.easy ?? row.textEasy ?? ''
+      };
+      if (!map.has(chTitle)) map.set(chTitle, []);
+      map.get(chTitle).push(art);
+    }
+    return {
+      law: '日本国憲法',
+      version: '',
+      chapters: Array.from(map, ([title, articles]) => ({ title, articles }))
+    };
+  }
+
+  // 2) オブジェクト（chaptersあり）
+  if (data && Array.isArray(data.chapters)){
+    const law   = data.law ?? data.lawName ?? data.lawId ?? '日本国憲法';
+    const ver   = data.version ?? data.update ?? '';
+    const chs = data.chapters.map(ch => {
+      const title = ch.title ?? ch.chapter ?? '（章）';
+      const arts = (ch.articles ?? []).map(a => ({
+        no: a.no ?? a.num ?? a.article ?? '',
+        original: a.original ?? a.text ?? '',
+        easy: a.easy ?? a.textEasy ?? ''
+      }));
+      return { title, articles: arts };
+    });
+    return { law, version: ver, chapters: chs };
+  }
+
+  // 3) 想定外 → 空
+  return { law: '日本国憲法', version: '', chapters: [] };
+}
+
+/* ===== 検索マッチ ===== */
 function matches(a, q){
   if (!q) return true;
   q = q.toLowerCase();
-  return (a.no + ' ' + a.original + ' ' + a.easy).toLowerCase().includes(q);
+  return (String(a.no) + ' ' + String(a.original) + ' ' + String(a.easy)).toLowerCase().includes(q);
 }
 
+/* ===== 描画 ===== */
 function render(q=''){
   const app = document.getElementById('app');
   if (!state.data){ app.innerHTML = '<p>読み込み中…</p>'; return; }
@@ -171,9 +234,9 @@ function render(q=''){
     if (visArts.length===0) continue;
 
     parts.push(`<section class="chapter">
-      <h2>${ch.title}</h2>
+      <h2>${escapeHtml(ch.title)}</h2>
       <div class="toc">
-        ${ch.articles.map(a=>`<a href="#${encodeURIComponent(a.no)}">${a.no}</a>`).join('')}
+        ${ch.articles.map(a=>`<a href="#${encodeURIComponent(a.no)}">${escapeHtml(a.no)}</a>`).join('')}
       </div>
     `);
 
@@ -181,19 +244,19 @@ function render(q=''){
       const id = encodeURIComponent(a.no);
       const head = `
         <div class="art-head">
-          <div class="art-no" id="${id}">${a.no}</div>
+          <div class="art-no" id="${id}">${escapeHtml(a.no)}</div>
           <a class="muted" href="#${id}" title="リンク">#</a>
         </div>`;
 
       let body = '';
       if (state.mode==='easy'){
-        body = `<div class="block easy"><div>${escapeHtml(a.easy)}</div></div>`;
+        body = `<div class="block easy"><div>${escapeHtml(a.easy || '（やさしい日本語の準備中）')}</div></div>`;
       } else if (state.mode==='orig'){
-        body = `<div class="block original"><div>${escapeHtml(a.original)}</div></div>`;
+        body = `<div class="block original"><div>${escapeHtml(a.original || '')}</div></div>`;
       } else {
         body = `
-          <div class="block easy"><strong>やさしい文</strong><div>${escapeHtml(a.easy)}</div></div>
-          <div class="block original"><strong>原文</strong><div>${escapeHtml(a.original)}</div></div>`;
+          <div class="block easy"><strong>やさしい文</strong><div>${escapeHtml(a.easy || '（やさしい日本語の準備中）')}</div></div>
+          <div class="block original"><strong>原文</strong><div>${escapeHtml(a.original || '')}</div></div>`;
       }
 
       parts.push(`<article class="article">${head}${body}</article>`);
@@ -203,12 +266,19 @@ function render(q=''){
   app.innerHTML = parts.join('') || `<p>該当なし（検索ワードを変えてください）</p>`;
 }
 
+/* ===== HTMLエスケープ（修正版） ===== */
 function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&quot;',"'":'&#39;' }[m]));
+  return String(s).replace(/[&<>"']/g, m => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[m]));
 }
 
+/* 起動 */
 load();
 </script>
 </body>
 </html>
-HTML
