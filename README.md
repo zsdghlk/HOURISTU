@@ -1,28 +1,8 @@
 ### フォルダ構成
 
-```text
-lawsite/
-├─ app/
-│  ├─ layout.tsx
-│  ├─ page.tsx
-│  └─ laws/[lawId]/page.tsx
-├─ lib/
-│  ├─ types.ts
-│  └─ utils.ts
-├─ data/              # 生成済みJSON（最初は空OK）
-├─ public/
-│  ├─ favicon.ico
-│  └─ icon-512.png
-├─ scripts/
-│  ├─ fetch-laws.ts   # 更新一覧→本文XML取得→JSON化（差分のみ）
-│  ├─ parse-xml.ts    # XML→条・項のJSON化（超最小パーサ）
-│  └─ easyify.ts      # “やさしい日本語”ルール置換
-├─ styles/
-│  └─ globals.css
-├─ .github/workflows/build.yml
-├─ package.json
-├─ tsconfig.json
-├─ next.config.ts
-├─ postcss.config.js
-├─ tailwind.config.ts
-└─ .gitignore
+```textkenpo-site/
+├─ index.html        ← 閲覧ページ（原文/やさしい文 切替・検索・目次）
+├─ data/
+│  └─ kenpo.json     ← 憲法のデータ（原文＋やさしい文）
+└─ tools/
+   └─ maker.html     ← データ作成用ミニツール（ブラウザ上でJSON追記）
