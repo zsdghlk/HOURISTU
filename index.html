@@ -1,22 +1,168 @@
 cat > index.html <<'HTML'
 <!doctype html>
 <html lang="ja">
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>日本国憲法｜読み込みテスト</title>
-<body style="font-family:system-ui;max-width:900px;margin:auto;padding:16px">
-<h1>読み込みテスト</h1>
-<p>このページが見えればHTMLは置けています。</p>
-<div id="out"></div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>日本国憲法｜やさしい解説つき</title>
+<style>
+  :root { --fg:#111; --bg:#fff; --muted:#666; --card:#f6f6f6; --accent:#0b57d0; }
+  @media (prefers-color-scheme: dark){
+    :root { --fg:#eee; --bg:#121212; --muted:#aaa; --card:#1e1e1e; --accent:#7aa2ff; }
+  }
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);line-height:1.65}
+  header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid #0001}
+  .wrap{max-width:900px;margin:auto;padding:12px 16px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input,select,button{font:inherit;padding:8px 10px;border:1px solid #0002;border-radius:8px;background:transparent;color:var(--fg)}
+  input[type="search"]{flex:1;min-width:180px}
+  .badge{font-size:12px;color:var(--muted)}
+  .chapter{margin:18px 0}
+  .chapter h2{margin:8px 0 4px;font-size:18px}
+  .article{padding:12px;border-radius:10px;background:var(--card);margin:10px 0}
+  .art-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .art-no{font-weight:700}
+  .block{margin:8px 0;padding:10px;border-radius:8px;background:#00000008}
+  .block.original{border-left:4px solid #999}
+  .block.easy{border-left:4px solid var(--accent)}
+  .muted{color:var(--muted);font-size:14px}
+  .toc{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .toc a{padding:4px 8px;border:1px solid #0002;border-radius:999px;color:inherit;text-decoration:none}
+  .modebtns button[aria-pressed="true"]{background:var(--accent);color:white;border-color:transparent}
+  .footer{color:var(--muted);font-size:12px;margin:32px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="row">
+      <strong>日本国憲法（原文／やさしい文）</strong>
+      <span class="badge" id="meta"></span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div class="modebtns" role="group" aria-label="表示切替">
+        <button id="m-easy"   aria-pressed="true">やさしい文</button>
+        <button id="m-both"   aria-pressed="false">両方</button>
+        <button id="m-orig"   aria-pressed="false">原文のみ</button>
+      </div>
+      <input id="q" type="search" placeholder="検索（原文・やさしい文・条番号）" autocomplete="off">
+      <select id="goto"></select>
+      <button id="go">移動</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="app">
+  <p class="muted">読み込み中…</p>
+</main>
+
+<div class="wrap footer">
+  データ出典：e-Gov法令検索（原文）。やさしい文は学習目的の言い換えです（意味は原文と同一を目指しています）。
+</div>
+
 <script>
-const out = document.getElementById('out');
-fetch('./data/kenpo.json',{cache:'no-store'})
-  .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-  .then(j=>{
-    out.innerHTML = '<h2>JSON 読み込み成功</h2><pre>'+JSON.stringify(j,null,2)+'</pre>';
-  })
-  .catch(e=>{
-    out.innerHTML = '<p style="color:red">読み込みエラー: '+e.message+'</p>';
-  });
+const state = { mode: 'easy', data: null, flat: [] };
+
+const setMode = (m)=>{
+  state.mode = m;
+  for (const id of ['m-easy','m-both','m-orig']){
+    document.getElementById(id).setAttribute('aria-pressed', id==='m-'+m ? 'true':'false');
+  }
+  render();
+};
+
+document.getElementById('m-easy').onclick = ()=>setMode('easy');
+document.getElementById('m-both').onclick = ()=>setMode('both');
+document.getElementById('m-orig').onclick = ()=>setMode('orig');
+
+document.getElementById('go').onclick = ()=>{
+  const val = document.getElementById('goto').value;
+  if (val){ location.hash = encodeURIComponent(val); }
+};
+
+document.getElementById('q').addEventListener('input', (e)=> render(e.target.value.trim()));
+
+async function load(){
+  try{
+    const res = await fetch('./data/kenpo.json',{cache:'no-store'});
+    if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    state.data = await res.json();
+    document.getElementById('meta').textContent = `${state.data.law} / 更新: ${state.data.version}`;
+    // 目次
+    state.flat = [];
+    for (const ch of state.data.chapters){
+      for (const a of ch.articles){
+        state.flat.push({ chapter: ch.title, no: a.no });
+      }
+    }
+    const sel = document.getElementById('goto');
+    sel.innerHTML = '<option value="">条番号へ移動</option>' +
+      state.flat.map(x=>`<option value="${x.no}">${x.no}（${x.chapter}）</option>`).join('');
+    render();
+    if (location.hash) {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  }catch(e){
+    console.error(e);
+    document.getElementById('app').innerHTML = `<p style="color:#c00">読み込みエラー: ${e.message}</p>`;
+  }
+}
+
+function matches(a, q){
+  if (!q) return true;
+  q = q.toLowerCase();
+  return (a.no + ' ' + a.original + ' ' + a.easy).toLowerCase().includes(q);
+}
+
+function render(q=''){
+  const app = document.getElementById('app');
+  if (!state.data){ app.innerHTML = '<p>読み込み中…</p>'; return; }
+
+  const parts = [];
+  for (const ch of state.data.chapters){
+    const visArts = ch.articles.filter(a => matches(a, q));
+    if (visArts.length===0) continue;
+
+    parts.push(`<section class="chapter">
+      <h2>${ch.title}</h2>
+      <div class="toc">
+        ${ch.articles.map(a=>`<a href="#${encodeURIComponent(a.no)}">${a.no}</a>`).join('')}
+      </div>
+    `);
+
+    for (const a of visArts){
+      const id = encodeURIComponent(a.no);
+      const head = `
+        <div class="art-head">
+          <div class="art-no" id="${id}">${a.no}</div>
+          <a class="muted" href="#${id}" title="リンク">#</a>
+        </div>`;
+
+      let body = '';
+      if (state.mode==='easy'){
+        body = `<div class="block easy"><div>${escapeHtml(a.easy)}</div></div>`;
+      } else if (state.mode==='orig'){
+        body = `<div class="block original"><div>${escapeHtml(a.original)}</div></div>`;
+      } else {
+        body = `
+          <div class="block easy"><strong>やさしい文</strong><div>${escapeHtml(a.easy)}</div></div>
+          <div class="block original"><strong>原文</strong><div>${escapeHtml(a.original)}</div></div>`;
+      }
+
+      parts.push(`<article class="article">${head}${body}</article>`);
+    }
+    parts.push(`</section>`);
+  }
+  app.innerHTML = parts.join('') || `<p>該当なし（検索ワードを変えてください）</p>`;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&quot;',"'":'&#39;' }[m]));
+}
+
+load();
 </script>
 </body>
 </html>
