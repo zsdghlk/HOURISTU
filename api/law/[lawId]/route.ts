@@ -1,30 +1,44 @@
-import { NextRequest, NextResponse } from "next/server";
-import { parseStringPromise } from "xml2js";
+import { NextResponse } from "next/server";
 
-export const revalidate = 86400; // 1日
+type LawNameListInfo = {
+  LawId: string;
+  LawName: string;
+  LawNo?: string;
+  PromulgationDate?: string; // yyyyMMdd
+};
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { lawId: string } }
-) {
-  const url = `https://laws.e-gov.go.jp/api/1/lawdata/${params.lawId}`;
-  const res = await fetch(url, { next: { revalidate } });
-  if (!res.ok) return NextResponse.json({ error: "fetch failed" }, { status: 502 });
-  const xml = await res.text();
-  const json = await parseStringPromise(xml, { explicitArray: false });
+export const revalidate = 60 * 60 * 6; // 6h
 
-  // ざっくり抽出（タイトルと条番号の配列）
-  const law = json?.DataRoot?.Law || json?.DataRoot; // XMLの揺れ吸収
-  const title = law?.LawName || law?.LawTitle || "（無題の法令）";
-
-  // MainProvision > Article[] から条番号を拾う（無ければ空）
-  const articles = []
-  const main = law?.LawBody?.MainProvision;
-  const list = main?.Article ? (Array.isArray(main.Article) ? main.Article : [main.Article]) : [];
-  for (const a of list) {
-    const num = a?.ArticleTitle?.Match || a?.ArticleTitle || a?.ArticleNum || a?.Num || a?.$?.Num;
-    if (num) articles.push(String(num).replace(/第|条/g, "").trim()); // "第9条"→"9"
+export async function GET() {
+  const url = "https://laws.e-gov.go.jp/api/1/lawlists/1"; // 全法令
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    return NextResponse.json({ error: `Upstream ${res.status}` }, { status: 502 });
   }
+  const xml = await res.text();
 
-  return NextResponse.json({ lawId: params.lawId, title, articles });
+  // XML -> JSON
+  // @ts-ignore
+  const { XMLParser } = await import("fast-xml-parser");
+  const parser = new XMLParser({ ignoreAttributes: false });
+  const j = parser.parse(xml);
+
+  // 仕様：DataRoot.ApplData.LawNameListInfo[] に LawId/Name/No/PromulgationDate が入る
+  // （v1仕様書の表 2-1 / 2-2 参照）
+  const list: any[] =
+    j?.DataRoot?.ApplData?.LawNameListInfo
+      ? Array.isArray(j.DataRoot.ApplData.LawNameListInfo)
+        ? j.DataRoot.ApplData.LawNameListInfo
+        : [j.DataRoot.ApplData.LawNameListInfo]
+      : [];
+
+  const normalized: LawNameListInfo[] = list.map((x: any) => ({
+    LawId: x?.LawId ?? "",
+    LawName: x?.LawName ?? "",
+    LawNo: x?.LawNo,
+    PromulgationDate: x?.PromulgationDate
+  })).filter((x: LawNameListInfo) => x.LawId && x.LawName);
+
+  // クライアント側のページングを楽にするため軽い形で返す
+  return NextResponse.json({ count: normalized.length, items: normalized });
 }
