@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ベースのタイポと背景（必要最小限） */
+:root { color-scheme: light; }
+html, body { height: 100%; }
+body { @apply bg-white text-gray-900; }
+
+/* リンクのフォーカス視認性 */
+a { @apply underline underline-offset-2 decoration-gray-300 hover:decoration-blue-400; }
+a:focus-visible { @apply outline-none ring-2 ring-blue-400/50 rounded-sm; }
+
+/* <mark> の読みやすい色 */
+mark { @apply bg-yellow-200 px-0.5 rounded; }
