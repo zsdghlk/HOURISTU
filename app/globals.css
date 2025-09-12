@@ -1,15 +1,77 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* === 基本トークン === */
+:root{
+  --primary:#007BFF;   /* メインブルー */
+  --bg:#F8F9FA;        /* ページ背景 */
+  --cta:#FF7A00;       /* CTAオレンジ */
+  --text:#111827;      /* 文字色 */
+  --muted:#6B7280;     /* 補助テキスト */
+  --border:#E5E7EB;    /* 枠線 */
+  --radius:16px;
+  --radius-sm:10px;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+}
 
-/* ベースのタイポと背景（必要最小限） */
-:root { color-scheme: light; }
-html, body { height: 100%; }
-body { @apply bg-white text-gray-900; }
+/* === Reset（最小） === */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Noto Sans JP", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+img{max-width:100%;height:auto;display:block}
 
-/* リンクのフォーカス視認性 */
-a { @apply underline underline-offset-2 decoration-gray-300 hover:decoration-blue-400; }
-a:focus-visible { @apply outline-none ring-2 ring-blue-400/50 rounded-sm; }
+/* === レイアウト === */
+.container{max-width:1120px;margin-inline:auto;padding:24px}
+.section{margin-block:24px}
+.sticky-nav{position:sticky;top:56px;background:rgba(255,255,255,.9);backdrop-filter:saturate(180%) blur(6px);border-block:1px solid var(--border);padding:12px;z-index:10}
+.grid{display:grid;gap:16px}
+@media (min-width:640px){.grid.cols-2{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1024px){.grid.cols-3{grid-template-columns:repeat(3,1fr)}}
 
-/* <mark> の読みやすい色 */
-mark { @apply bg-yellow-200 px-0.5 rounded; }
+/* === 共通カード === */
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.card h3{margin:0 0 8px;font-size:1.125rem;font-weight:600}
+
+/* === タイポ === */
+h1{margin:0 0 8px;font-size:1.5rem;font-weight:700} /* 24px */
+h2{margin:0 0 8px;font-size:1.25rem;font-weight:600}/* 20px */
+p,li,dd{font-size:1rem} /* 16px */
+small,.muted{color:var(--muted);font-size:.875rem}
+
+/* === リンク / ボタン === */
+a{color:inherit;text-decoration:underline;text-underline-offset:2px;text-decoration-color:#d1d5db}
+a:hover{text-decoration-color:color-mix(in oklab, var(--primary) 70%, #d1d5db)}
+a:focus-visible{outline:2px solid color-mix(in oklab, var(--primary) 40%, transparent);outline-offset:2px;border-radius:2px}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;background:#fff}
+.btn:hover{background:#fff}
+.btn-cta{display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:var(--radius-sm);text-decoration:none;color:#fff;background:var(--cta)}
+.btn-cta:hover{filter:brightness(.95)}
+
+/* === 目次チップ === */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-block;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;text-decoration:none;font-size:.9rem}
+.chip:hover{background:#fff}
+
+/* === ヘッダー / フッター === */
+.site-header{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--border);height:56px}
+.site-header .row{display:flex;align-items:center;height:56px}
+.brand{font-weight:700;color:var(--primary);text-decoration:none}
+.nav{display:none;margin-left:32px;gap:20px}
+@media(min-width:768px){.nav{display:flex}}
+.site-footer{margin-top:48px;background:#fff;border-top:1px solid var(--border);padding:16px 0}
+.site-footer .row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;color:var(--muted);font-size:.9rem}
+
+/* === section アンカーのスクロール余白 === */
+section[id]{scroll-margin-top:80px}
+
+/* === details（Raw XML） === */
+details{border:1px solid var(--border);border-radius:var(--radius);background:#fff;padding:12px}
+summary{cursor:pointer;font-weight:600}
+pre{white-space:pre-wrap;word-break:break-word;font-size:.875rem}
+mark{background: #fde68a;padding:0 2px;border-radius:2px}
