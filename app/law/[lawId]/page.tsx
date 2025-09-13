@@ -116,7 +116,7 @@ export default async function LawDetail(props: {
 
                 // 本則: 「第○条」, 附則: 「附則（…） 第○条」だと重複感が強いので
                 // グループ見出しにラベル、各条の見出しは「第○条」だけに絞る。
-                const heading = a.number ?? a.key;
+                const heading = formatArticleHeading(a.number ?? a.key);
 
                 return (
                   <section key={uniqueKey} id={uniqueKey} className="card">
@@ -135,4 +135,30 @@ export default async function LawDetail(props: {
       )}
     </div>
   );
+}
+
+// ---- 表示整形ヘルパー（追加）----
+function displayArticleNum(n?: string): string {
+  if (!n) return "";
+  if (/^第.+条/.test(n)) return n;                 // 既に整形済み
+  if (n.includes("_")) {
+    const [main, sub] = n.split("_");
+    if (main && sub) return `第${main}条の${sub}`;  // "3_2" → "第3条の2"
+  }
+  if (/^[0-9]+$/.test(n)) return `第${n}条`;       // "3" → "第3条"
+  return n;
+}
+
+// --- 見出しを「第○条／第○条の△」に統一する最終フォーマッタ ---
+function formatArticleHeading(input?: string): string {
+  const s = (input ?? "").trim();
+  if (!s) return "";
+  if (s === "前文") return s;                    // 前文はそのまま
+  if (/^第.+条/.test(s)) return s;               // 既に整形済みはそのまま
+  const m = s.match(/^(\d+)_(\d+)$/);            // "3_2" → "第3条の2"
+  if (m) return `第${m[1]}条の${m[2]}`;
+  if (/^\d+$/.test(s)) return `第${s}条`;        // "3" → "第3条"
+  // 漢数字のみ等にも対応（任意）
+  if (/^[一二三四五六七八九十百千万]+$/.test(s)) return `第${s}条`;
+  return s;                                      // それ以外は素通し
 }
