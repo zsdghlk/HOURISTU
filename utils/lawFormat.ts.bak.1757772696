@@ -1,0 +1,25 @@
+/**
+ * 「第◯条」を整形する。
+ * 既に「第…条」ならそのまま返す。空は空文字。
+ */
+export function formatArticleHeading(input?: string) {
+  const s = String(input ?? "").trim();
+  if (!s) return "";
+  if (/^第.+条$/.test(s)) return s;             // 既に「第…条」
+  const body = s.replace(/^第/, "").replace(/条$/, "");
+  return `第${body}条`;
+}
+
+/**
+ * 段落番号のプレフィックスを整形。
+ * - num が空: 1段落目は無印、2段落目以降は「2 」「3 」…
+ * - 「第…項」は中身だけ抜き出して後ろにスペース
+ */
+export function formatParagraphNum(num?: string, index?: number) {
+  const raw = String(num ?? "").trim();
+  if (!raw) return typeof index === "number" && index > 0 ? `${index + 1} ` : "";
+  const m = raw.match(/^第(.+?)項$/);
+  if (m) return `${m[1]} `;
+  if (/^\d+$/.test(raw)) return `${raw} `;
+  return `${raw} `;
+}

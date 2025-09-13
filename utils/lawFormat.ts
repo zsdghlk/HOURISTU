@@ -1,26 +1,15 @@
-/**
- * 条文表示用の番号整形ユーティリティ
- * - 第1項は番号を出さない
- * - 数字のみ: 【第n項】
- * - 漢数字のみ: （一）（二）… を号として扱う
- */
-export function formatParagraphNum(num?: string, index?: number): string {
-  if (!num || String(num).trim() === "") {
-    // 項番号が無い → 先頭段落は無印、2段落目以降は【第(n)項】（indexは0始まり）
-    return index && index > 0 ? `【第${index + 1}項】` : "";
-  }
-  const s = String(num).trim();
+export function formatArticleHeading(input: unknown): string {
+  // "7" -> "第七条" / "第一条"など既に「第…条」ならそのまま
+  const s = String(input ?? "").trim();
+  if (!s) return "";
+  if (/^第.+条$/.test(s)) return s;
+  // 半角数字だけ来たときの簡易対応（本来は漢数字変換だが最小実装）
+  return `第${s}条`;
+}
 
-  // アラビア数字（1,2,3...）
-  if (/^\d+$/.test(s)) {
-    return s === "1" ? "" : `【第${s}項】`;
-  }
-
-  // 漢数字（号の想定: 一,二,三...）
-  if (/^[一二三四五六七八九十百千万]+$/.test(s)) {
-    return `（${s}）`;
-  }
-
-  // それ以外はそのまま
-  return s;
+export function formatParagraphNum(num: unknown, indexZeroBased?: number): string {
+  // "2" -> "（二）" / undefined か 0段落目なら空
+  const raw = String(num ?? "").trim();
+  if (!raw || raw === "1") return "";     // 第1段落は通例番号省略
+  return `（${raw}） `;
 }

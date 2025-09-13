@@ -6,7 +6,7 @@ type Art = {
   number?: string;
   key: string;
   paragraphs: { num?: string; text: string }[];
-  // e-Gov 側のパーサが付けてくることがある（附則等）
+  /** e-Gov パース時に入ってくる（附則ラベルなど） */
   prefix?: string;
 };
 
@@ -62,8 +62,10 @@ export default async function LawDetail(props: {
   const fallback = ROKUPO.find((x) => x.lawId === lawId)?.title;
   const pageTitle = parsed?.lawTitle || fallback || "法令";
 
-  // フィルタ
+  // ソース配列を安全に取り出し
   let arts: Art[] = Array.isArray(parsed?.articles) ? (parsed.articles as Art[]) : [];
+
+  // クエリがあれば絞り込み（※後から戻せます）
   if (q) {
     arts = arts.filter(
       (a) =>
@@ -72,9 +74,10 @@ export default async function LawDetail(props: {
     );
   }
 
-  // 附則などの prefix を付与
+  // ---- 附則などの prefix を継承して付与（JSX の外で実行）----
   const artsWithPrefix = computeArtsWithPrefix(arts);
 
+  // 0件なら JSX の外で早期 return（ここが JSX 内だと「Expression expected」で落ちます）
   if (!Array.isArray(artsWithPrefix) || artsWithPrefix.length === 0) {
     return (
       <div style={{ padding: 16 }}>
@@ -87,12 +90,14 @@ export default async function LawDetail(props: {
   return (
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 20, marginBottom: 12 }}>{pageTitle}</h1>
+
       <div style={{ display: "grid", gap: 12 }}>
         {artsWithPrefix.map((a, idxA) => {
-          // 見出し: 「附則 第n条」形式（_prefix が附則なら付ける）
+          // 見出し = 「(prefix) 第n条」 例: 「附則 第一条」
           const prefixLabel = a._prefix && /附則/.test(String(a._prefix)) ? "附則 " : "";
           const heading = `${prefixLabel}${formatArticleHeading(a.number ?? a.key)}`;
           const ukey = `${a.key}-${idxA}`;
+
           return (
             <section key={ukey} className="card">
               <h2 style={{ marginBottom: 8 }}>{heading}</h2>

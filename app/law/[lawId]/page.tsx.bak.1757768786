@@ -6,11 +6,10 @@ type Art = {
   number?: string;
   key: string;
   paragraphs: { num?: string; text: string }[];
-  // e-Gov 側のパーサが付けてくることがある（附則等）
+  /** e-Gov 側で付くことがある（附則ラベルなど） */
   prefix?: string;
 };
 
-// e-Gov から XML 取得（SSR 内）
 async function fetchXml(lawId: string): Promise<string> {
   const res = await fetch(`https://laws.e-gov.go.jp/api/1/lawdata/${lawId}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch XML: ${res.status}`);
@@ -36,12 +35,16 @@ function computeArtsWithPrefix(arts: Art[]): (Art & { _prefix?: string })[] {
   let lastPrefix = "";
   return (arts || []).map((a) => {
     const keyStr = String(a?.key ?? "");
+
+    // 1) 明示の prefix（優先）
     if (a?.prefix && a.prefix.trim()) {
       lastPrefix = a.prefix.trim();
-    } else if (/^附則/.test(keyStr)) {
-      // 「附則」「附則 第一条」など key からも附則を検知
+    }
+    // 2) 見出しの key が「附則…」なら附則に切替
+    else if (/^附則/.test(keyStr)) {
       lastPrefix = "附則";
     }
+    // 3) それ以外は lastPrefix を継承
     return { ...a, _prefix: lastPrefix };
   });
 }
@@ -56,14 +59,14 @@ export default async function LawDetail(props: {
 
   // XML → パース
   const xml = await fetchXml(lawId);
-  const parsed: any = await parseLawXml(xml);
+  const parsed = await parseLawXml(xml);
 
   // タイトル
   const fallback = ROKUPO.find((x) => x.lawId === lawId)?.title;
-  const pageTitle = parsed?.lawTitle || fallback || "法令";
+  const pageTitle = parsed.lawTitle || fallback || "法令";
 
   // フィルタ
-  let arts: Art[] = Array.isArray(parsed?.articles) ? (parsed.articles as Art[]) : [];
+  let arts: Art[] = (parsed.articles as any) ?? [];
   if (q) {
     arts = arts.filter(
       (a) =>
@@ -72,9 +75,10 @@ export default async function LawDetail(props: {
     );
   }
 
-  // 附則などの prefix を付与
+  // ---- 附則などの prefix を継承して付与（JSX の外でやること！）----
   const artsWithPrefix = computeArtsWithPrefix(arts);
 
+  // 空ならメッセージを返して終了（これも JSX の手前で！）
   if (!Array.isArray(artsWithPrefix) || artsWithPrefix.length === 0) {
     return (
       <div style={{ padding: 16 }}>
@@ -84,15 +88,19 @@ export default async function LawDetail(props: {
     );
   }
 
+  // 表示
   return (
     <div style={{ padding: 16 }}>
       <h1 style={{ fontSize: 20, marginBottom: 12 }}>{pageTitle}</h1>
+
       <div style={{ display: "grid", gap: 12 }}>
         {artsWithPrefix.map((a, idxA) => {
-          // 見出し: 「附則 第n条」形式（_prefix が附則なら付ける）
-          const prefixLabel = a._prefix && /附則/.test(String(a._prefix)) ? "附則 " : "";
+          // 見出し = 「(prefix) 第n条」 例: 「附則 第一条」
+          const prefixLabel =
+            a._prefix && /附則/.test(String(a._prefix)) ? "附則 " : "";
           const heading = `${prefixLabel}${formatArticleHeading(a.number ?? a.key)}`;
           const ukey = `${a.key}-${idxA}`;
+
           return (
             <section key={ukey} className="card">
               <h2 style={{ marginBottom: 8 }}>{heading}</h2>
@@ -108,6 +116,11 @@ export default async function LawDetail(props: {
           );
         })}
       </div>
+
+      {/* 既存の strong を非表示にする（もし formatParagraphNum が <strong> を返す場合の保険） */}
+      <style>
+        {`strong { display: none; } mark { background: #fff0a6; padding: 0 .15em; }`}
+      </style>
     </div>
   );
 }
