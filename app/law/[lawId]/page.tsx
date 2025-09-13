@@ -1,4 +1,5 @@
 import { getLawXml } from "@/lib/egov";
+import { formatParagraphNum } from "../../../utils/lawFormat";
 import { parseLawXml } from "@/lib/parseLawXml";
 import { ROKUPO } from "@/lib/rokupo";
 
@@ -116,14 +117,25 @@ export default async function LawDetail(props: {
 
                 // 本則: 「第○条」, 附則: 「附則（…） 第○条」だと重複感が強いので
                 // グループ見出しにラベル、各条の見出しは「第○条」だけに絞る。
-                const heading = formatArticleHeading(a.number ?? a.key);
 
                 return (
                   <section key={uniqueKey} id={uniqueKey} className="card">
-                    <h2 style={{ marginBottom: 8 }}>{heading}</h2>
+                      <h2 style={{ marginBottom: 8 }}>
+                        {(() => {
+                          const labelRaw = (a.supLabel || a.prefix || g.label || "").trim();
+                          const isSup = Boolean(a.isSupplement) || /附則/.test(labelRaw);
+                          const supLabel = isSup
+                            ? (labelRaw && !labelRaw.startsWith("附則") ? `附則（${labelRaw}）` : (labelRaw || "附則"))
+                            : "";
+                          const head = isSup
+                            ? `${supLabel} ${formatArticleHeading(a.number ?? a.key)}`
+                            : formatArticleHeading(a.number ?? a.key);
+                          return head;
+                        })()}
+                      </h2>
                     <div style={{ display: "grid", gap: "10px" }}>
                       {a.paragraphs.map((p, i) => (
-                        <p key={`${uniqueKey}-p${i}`}>{q ? highlight(p.text, q) : p.text}</p>
+                        <p key={`${uniqueKey}-p${i}`}>{formatParagraphNum(p.num, i)}{q ? highlight(p.text, q) : p.text}</p>
                       ))}
                     </div>
                   </section>
