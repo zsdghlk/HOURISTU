@@ -1,0 +1,222 @@
+import { XMLParser } from "fast-xml-parser";
+
+/** 表示用の段落（項） */
+export type Paragraph = {
+  /** 先頭に付いていた段落番号（例: "2", "三"）。なければ undefined */
+  num?: string;
+  /** 本文（先頭番号は除去済み） */
+  text: string;
+};
+
+/** 表示用の条 */
+export type Article = {
+  /** ソート・重複回避用のキー（XML内の通しIDなど） */
+  key: string;
+  /** 見出し表示用の条番号（例: "第十四条", "第十四条の2"） */
+  number?: string;
+  /** 段落（項） */
+  paragraphs: Paragraph[];
+  /** 付加ラベル（例: "附則（昭和xx年法律第yy号 YYYY-MM-DD 改正）"） */
+  prefix?: string;
+};
+
+/** 解析済み法令 */
+export type ParsedLaw = {
+  lawTitle?: string;
+  meta: { lawNo?: string; promulgationDate?: string; enforcementDate?: string };
+  articles: Article[];
+};
+
+/* -------------------- 先頭番号抽出（項番号） -------------------- */
+/**
+ * 先頭の連番（半角/全角/漢数字）を「段落番号」として取り出し、本文からは除去する。
+ * 例:
+ *   "２この法律は…"    -> num="2", text="この法律は…"
+ *   "３）……"           -> num="3", text="……"
+ *   "五．……"           -> num="五", text="……"
+ * 除外（削らない）:
+ *   "第二項……" のように「数字 or 漢数字」直後に「項」が続くケース
+ */
+const LEADING_NUM_RE =
+  /^(?:[\s\u3000]*)([0-9０-９一二三四五六七八九十百千万]+)(?!項)[\.\u3002\uFF0E\u3001\uFF0C\)\uFF09】\]]*\s*/;
+
+function stripLeadingParagraphNum(input: string): { num?: string; text: string } {
+  const s = (input ?? "").trimStart();
+  const m = s.match(LEADING_NUM_RE);
+  if (m) {
+    const rest = s.slice(m[0].length);
+    // 全角数字は半角へ
+    return { num: m[1].replace(/[０-９]/g, d => String("０１２３４５６７８９".indexOf(d))), text: rest };
+  }
+  return { text: s };
+}
+
+/* -------------------- 条番号の正規化 -------------------- */
+function normalizeArticleNum(raw?: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  if (/第.+条/.test(s)) return s; // 既に「第…条」ならそのまま
+  if (s.includes("_")) {
+    const [main, sub] = s.split("_");
+    if (main && sub) return `第${main}条の${sub}`;
+  }
+  if (/^[0-9]+$/.test(s)) return `第${s}条`;
+  if (/^[一二三四五六七八九十百千万]+$/.test(s)) return `第${s}条`;
+  return s;
+}
+
+/* -------------------- XML 解析 -------------------- */
+export async function parseLawXml(xml: string): Promise<ParsedLaw> {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "",
+    textNodeName: "text",
+    trimValues: true,
+    // Article / Paragraph / Item は常に配列で受ける
+    isArray: (name: string) => ["Article", "Paragraph", "Item"].includes(name),
+  });
+
+  const j = parser.parse(xml);
+
+  // LawBody の位置は版により異なるので分岐で堅く取得
+  const lawBody =
+    j?.DataRoot?.ApplData?.LawFullText?.LawBody ??
+    j?.DataRoot?.ApplData?.LawContents?.LawBody ??
+    j?.DataRoot?.ApplData?.Law?.LawBody ??
+    null;
+
+  const lawTitle: string | undefined =
+    lawBody?.LawTitle?.text ?? lawBody?.LawTitle ?? undefined;
+
+  const lawNo: string | undefined =
+    j?.DataRoot?.ApplData?.LawFullText?.Law?.LawNum ??
+    j?.DataRoot?.ApplData?.Law?.LawNum ??
+    undefined;
+
+  // 施行・公布日（取れない場合もあるので空は許容）
+  const promulgationDate = (() => {
+    const L = j?.DataRoot?.ApplData?.LawFullText?.Law ?? j?.DataRoot?.ApplData?.Law;
+    if (!L) return undefined;
+    const era = L.Era, y = L.Year, m = L.PromulgateMonth, d = L.PromulgateDay;
+    if (era && y && m && d) return `${era}${y}年${m}月${d}日`;
+    return undefined;
+  })();
+
+  const enforcementDate = undefined; // e-GovのXMLでは場所が一定しないためここでは未算出
+
+  if (!lawBody) {
+    return { lawTitle, meta: { lawNo, promulgationDate, enforcementDate }, articles: [] };
+  }
+
+  const articles: Article[] = [];
+
+  // テキスト収集ユーティリティ
+  function collectText(n: any): string {
+    if (n == null) return "";
+    if (typeof n === "string") return n;
+    if (typeof n === "number") return String(n);
+    if (Array.isArray(n)) return n.map(collectText).join("");
+    if (typeof n === "object") {
+      if (typeof n.text === "string") return n.text;
+      return Object.values(n).map(collectText).join("");
+    }
+    return "";
+  }
+
+  // Paragraph配列の正規化＆先頭番号の抽出
+  function toParagraphs(a: any): Paragraph[] {
+    const paras = Array.isArray(a?.Paragraph) ? a.Paragraph : a?.Paragraph ? [a.Paragraph] : [];
+
+    if (paras.length > 0) {
+      return paras
+        .map((p: any) => {
+          const text =
+            (typeof p?.Sentence?.text === "string" && p.Sentence.text) ||
+            (typeof p?.ParagraphSentence?.text === "string" && p.ParagraphSentence.text) ||
+            (typeof p?.text === "string" && p.text) ||
+            collectText(p);
+          const { num, text: body } = stripLeadingParagraphNum(String(text ?? "").trim());
+          return { num, text: body };
+        })
+        .filter((x: Paragraph) => x.text.length > 0);
+    }
+
+    // Paragraphが無い条は条直下の Sentence などを1段落として扱う
+    const fallbackText =
+      (typeof a?.Sentence?.text === "string" && a.Sentence.text) ||
+      (typeof a?.ParagraphSentence?.text === "string" && a.ParagraphSentence.text) ||
+      (typeof a?.text === "string" && a.text) ||
+      collectText(a);
+
+    const s = String(fallbackText ?? "").trim();
+    if (!s) return [];
+    const { num, text } = stripLeadingParagraphNum(s);
+    return [{ num, text }];
+  }
+
+  // 深さ優先で Article を収集（本則/附則を問わず）
+  function walk(node: any, inSuppl = false, supLabel?: string) {
+    if (!node || typeof node !== "object") return;
+
+    const list: any[] = Array.isArray(node.Article)
+      ? node.Article
+      : node.Article
+      ? [node.Article]
+      : [];
+
+    for (const a of list) {
+      const num = normalizeArticleNum(a?.ArticleNum ?? a?.Num ?? "");
+      const paragraphs = toParagraphs(a);
+      if (!num && paragraphs.length === 0) continue;
+
+      articles.push({
+        key: a?.ArticleTitle ?? a?.ArticleNum ?? a?.Num ?? `${articles.length}`,
+        number: num || undefined,
+        paragraphs,
+        prefix: supLabel,
+      });
+    }
+
+    // Article自体の形でぶら下がっているケースにも対応
+    const maybeArticle = node?.ArticleNum || node?.Paragraph || node?.Sentence ? node : null;
+    if (maybeArticle && list.length === 0) {
+      const num = normalizeArticleNum(node?.ArticleNum ?? node?.Num ?? "");
+      const paragraphs = toParagraphs(node);
+      if (num || paragraphs.length) {
+        articles.push({
+          key: node?.ArticleTitle ?? node?.ArticleNum ?? node?.Num ?? `${articles.length}`,
+          number: num || undefined,
+          paragraphs,
+          prefix: supLabel,
+        });
+      }
+    }
+
+    // 子要素を再帰（Chapter/Section/Subsection/Division/Item など）
+    for (const [k, v] of Object.entries(node)) {
+      if (!v || typeof v !== "object") continue;
+      const nextSuppl =
+        inSuppl || k.toLowerCase().includes("suppl"); // SupplProvision など
+      const nextSupLabel =
+        supLabel ||
+        (node as any)?.SupplProvisionLabel ||
+        (node as any)?.SupplLawNum ||
+        (node as any)?.EnactStatement ||
+        undefined;
+
+      if (Array.isArray(v)) {
+        for (const child of v) walk(child, nextSuppl, nextSupLabel);
+      } else {
+        walk(v, nextSuppl, nextSupLabel);
+      }
+    }
+  }
+
+  walk(lawBody, false, undefined);
+
+  return {
+    lawTitle,
+    meta: { lawNo, promulgationDate, enforcementDate },
+    articles,
+  };
+}

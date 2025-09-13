@@ -1,0 +1,205 @@
+import { XMLParser } from "fast-xml-parser";
+
+/** 画面用：段落 */
+export type Paragraph = { num?: string; text: string };
+
+/** 画面用：条 */
+export type Article = {
+  key: string;                 // 一意キー
+  number?: string;             // 例: 第3条 / 第3条の2（見出し表示用）
+  paragraphs: Paragraph[];     // 段落
+  prefix?: string;             // 例: 附則（昭和xx年法律第yy号 ... 改正）
+};
+
+/** 画面用：法令全体 */
+export type ParsedLaw = {
+  lawTitle?: string;
+  meta: { lawNo?: string; promulgationDate?: string; enforcementDate?: string };
+  articles: Article[];
+};
+
+/* ===== ユーティリティ ===== */
+
+/** "3"→"第3条", "3_2"→"第3条の2"、既に「第…条」ならそのまま */
+function normalizeArticleNum(raw?: string): string | undefined {
+  const s = (raw ?? "").trim();
+  if (!s) return undefined;
+  if (/第.+条/.test(s)) return s;
+  if (s.includes("_")) {
+    const [main, sub] = s.split("_");
+    if (main && sub) return `第${main}条の${sub}`;
+  }
+  if (/^[0-9]+$/.test(s)) return `第${s}条`;
+  if (/^[一二三四五六七八九十百千万]+$/.test(s)) return `第${s}条`;
+  return s;
+}
+
+/** 任意ノードからテキストらしきものを収集 */
+function collectText(n: any): string {
+  if (n == null) return "";
+  if (typeof n === "string") return n;
+  if (typeof n === "number") return String(n);
+  if (Array.isArray(n)) return n.map(collectText).join("");
+  if (typeof n === "object") {
+    if (typeof (n as any).text === "string") return (n as any).text;
+    return Object.values(n).map(collectText).join("");
+  }
+  return "";
+}
+
+/** Paragraph配列に正規化（なければ条直下の Sentence を1段落に） */
+function normalizeParagraphs(article: any): Paragraph[] {
+  const p = (article as any)?.Paragraph;
+
+  if (p) {
+    const arr = Array.isArray(p) ? p : [p];
+
+    const tmp = arr.map((x: any) => {
+      const rawNum = x?.ParagraphNum ?? x?.ParaNum ?? x?.Num ?? undefined;
+      const num = (rawNum != null && String(rawNum).trim() !== "") ? String(rawNum).trim() : undefined;
+      const text =
+        collectText(x?.Sentence) ||
+        collectText(x?.ParagraphSentence) ||
+        collectText(x);
+      const t = (text || "").trim();
+      if (!t) return null as any;
+      return { num, text: t }
+    }).filter(Boolean) as Paragraph[];
+
+    // 本文で重複排除（番号がある方を優先）
+    const byText = new Map<string, Paragraph>();
+    for (const par of tmp) {
+      const prev = byText.get(par.text);
+      if (!prev) {
+        byText.set(par.text, par);
+      } else if (!prev.num && par.num) {
+        byText.set(par.text, par);
+      }
+    }
+    return Array.from(byText.values());
+  }
+
+  const text =
+    collectText(article?.Sentence) ||
+    collectText(article?.ParagraphSentence) ||
+    collectText(article);
+  const t = (text || "").trim();
+  return t ? [{ text: t }] : [];
+} else { return null as any; }
+    }).filter(Boolean) as Paragraph[];
+  }
+  const text =
+    collectText(article?.Sentence) ||
+    collectText(article?.ParagraphSentence) ||
+    collectText(article);
+  const t = (text || "").trim();
+  return t ? [{ text: t }] : [];
+}
+
+/* ===== 本体 ===== */
+
+/**
+ * e-Gov 法令XMLから条文を深さ優先で網羅収集
+ * - LawBody/MainProvision/SupplProvision のどこにあっても Article を拾う
+ * - ArticleNum が無くても段落があれば採用
+ */
+export async function parseLawXml(xml: string): Promise<ParsedLaw> {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: "",
+    textNodeName: "text",
+    trimValues: true,
+    // 一部のファイルで単発が配列化されないのを防ぐための保険
+    isArray: (name: string) => ["Article", "Paragraph", "Item", "Part", "Chapter", "Section", "Subsection", "Division"].includes(name),
+  });
+
+  const j = parser.parse(xml);
+
+  // ルート（仕様差異に耐えるよう複数パスを許容）
+  const lawNode =
+    j?.DataRoot?.ApplData?.LawFullText?.Law ??
+    j?.DataRoot?.ApplData?.LawContents?.Law ??
+    j?.DataRoot?.ApplData?.Law ??
+    null;
+
+  const lawBody =
+    lawNode?.LawBody ??
+    j?.DataRoot?.ApplData?.LawFullText?.LawBody ?? // 一部XMLで Law 直下でない場合の保険
+    null;
+
+  const lawTitle: string | undefined =
+    lawBody?.LawTitle ? collectText(lawBody.LawTitle) : undefined;
+
+  const meta = {
+    lawNo: collectText(lawNode?.LawNum) || undefined,
+    promulgationDate: ((): string | undefined => {
+      const era = lawNode?.Era, y = lawNode?.Year, m = lawNode?.PromulgateMonth, d = lawNode?.PromulgateDay;
+      if (era && y && m && d) return `${era}${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      return undefined;
+    })(),
+    enforcementDate: undefined,
+  };
+
+  if (!lawBody) {
+    return { lawTitle, meta, articles: [] };
+  }
+
+  type Tmp = { num?: string; title?: string; paragraphs: Paragraph[]; supLabel?: string; };
+  const tmpResults: Tmp[] = [];
+
+  function walk(node: any, inSuppl = false, supLabel?: string) {
+    if (!node || typeof node !== "object") return;
+
+    // 1) 配下の Article リスト
+    const list = Array.isArray(node.Article)
+      ? node.Article
+      : node.Article ? [node.Article] : [];
+
+    for (const a of list) {
+      const num = normalizeArticleNum(a?.ArticleNum ?? a?.Num ?? "");
+      const paragraphs = normalizeParagraphs(a);
+      if (!num && paragraphs.length === 0) continue;
+      tmpResults.push({ num, title: a?.ArticleTitle ?? a?.Title ?? "", paragraphs, supLabel });
+    }
+
+    // 2) 自身が Article 相当の場合
+    const maybeArticle =
+      node?.ArticleNum || node?.Paragraph || node?.Sentence ? node : null;
+    if (maybeArticle && !list.length) {
+      const num = normalizeArticleNum(node?.ArticleNum ?? node?.Num ?? "");
+      const paragraphs = normalizeParagraphs(node);
+      if (num || paragraphs.length) {
+        tmpResults.push({ num, title: node?.ArticleTitle ?? node?.Title ?? "", paragraphs, supLabel });
+      }
+    }
+
+    // 3) 子要素を再帰
+    for (const [k, v] of Object.entries(node)) {
+      if (!v || typeof v !== "object") continue;
+      const nextSuppl = inSuppl || k.toLowerCase().includes("suppl"); // SupplProvision 系
+      const nextSupLabel =
+        supLabel ||
+        (node as any)?.SupplProvisionLabel ||
+        (node as any)?.SupplLawNum ||
+        (node as any)?.EnactStatement ||
+        undefined;
+      if (Array.isArray(v)) {
+        for (const child of v) walk(child, nextSuppl, nextSupLabel);
+      } else {
+        walk(v, nextSuppl, nextSupLabel);
+      }
+    }
+  }
+
+  walk(lawBody, false, undefined);
+
+  // 画面用 Article に変換（キー付与）
+  const articles: Article[] = tmpResults.map((r, i) => ({
+    key: r.num ? `${r.num}-${i}` : `art-${i}`,
+    number: r.num,
+    paragraphs: r.paragraphs,
+    prefix: r.supLabel ? String(r.supLabel) : undefined,
+  }));
+
+  return { lawTitle, meta, articles };
+}
