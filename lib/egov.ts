@@ -1,108 +1,123 @@
 import { parseStringPromise } from "xml2js";
 
-/** e-Gov V1 lawdata XML → JSON */
-export async function fetchLawJson(lawId: string, revalidateSec = 86400) {
+/** e-Gov V1 lawdata XML を取得（2MB制限回避のため no-store） */
+export async function fetchLawJson(lawId: string) {
   const url = `https://laws.e-gov.go.jp/api/1/lawdata/${lawId}`;
-  const res = await fetch(url, { next: { revalidate: revalidateSec } });
-  if (!res.ok) throw new Error(`fetch failed: ${url}`);
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`fetch failed: ${url} status=${res.status}`);
   const xml = await res.text();
   const json = await parseStringPromise(xml, { explicitArray: false });
-  // Lawオブジェクト位置の揺れを吸収
-  const law = json?.DataRoot?.Law || json?.DataRoot;
+  const law = getLawRoot(json);
+  if (!law) throw new Error("failed to locate Law node in XML");
   return law;
 }
 
-/** JSONのArticle配列を強制配列化 */
-function toArray<T>(x: T | T[] | undefined): T[] {
+/** util */
+export function toArray<T>(x: T | T[] | undefined): T[] {
   if (!x) return [];
   return Array.isArray(x) ? x : [x];
 }
 
-/** Article の「第○条」表記から数字キー "9", "9-2" 等を抽出 */
-function normalizeArticleKey(article: any): string | null {
+/** Law ノード探索 */
+function getLawRoot(json: any): any {
+  const v1 = json?.DataRoot?.ApplData?.LawFullText?.Law;
+  if (v1) return v1;
+  const v2 = json?.DataRoot?.Law;
+  if (v2) return v2;
+  const v3 = json?.Law || json?.DataRoot?.ApplData?.Law;
+  if (v3) return v3;
+  return deepFindLaw(json);
+}
+function deepFindLaw(node: any): any {
+  if (!node || typeof node !== "object") return null;
+  if ((node as any).LawBody) return node;
+  for (const k of Object.keys(node)) {
+    const found = deepFindLaw((node as any)[k]);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 「第○条」系から "9" "9-2" に正規化（必ず export） */
+export function normalizeArticleKey(article: any): string | null {
   const t = article?.ArticleTitle || article?.ArticleNum || article?.Num || article?.$?.Num || "";
   const key = String(t).replace(/[^\d\-]/g, "");
   return key || null;
 }
 
-/** 法令本文の Article[] を列挙 */
+/** 本文 Article[] を列挙（Chapter/Section配下も走査） */
 export function listArticleKeys(law: any): string[] {
-  const main = law?.LawBody?.MainProvision;
-  const articles = toArray(main?.Article);
+  const collect = (node: any): any[] => {
+    if (!node) return [];
+    let arr: any[] = [];
+    if (node.Article) arr = arr.concat(toArray(node.Article));
+    if (node.Chapter) arr = arr.concat(...toArray(node.Chapter).map(collect));
+    if (node.Section) arr = arr.concat(...toArray(node.Section).map(collect));
+    return arr;
+  };
+  const main = collect(law?.LawBody?.MainProvision);
+  const suppl = toArray(law?.LawBody?.SupplProvision?.Article);
+  const all = [...main, ...suppl];
   const keys: string[] = [];
-  for (const a of articles) {
+  for (const a of all) {
     const k = normalizeArticleKey(a);
     if (k) keys.push(k);
   }
   return keys;
 }
 
-/** 指定 artKey に一致する Article を返す */
+/** 指定キーに一致する Article を返す */
 export function findArticleByKey(law: any, artKey: string): any | null {
-  const main = law?.LawBody?.MainProvision;
-  const articles = toArray(main?.Article);
-  for (const a of articles) {
+  const collect = (node: any): any[] => {
+    if (!node) return [];
+    let arr: any[] = [];
+    if (node.Article) arr = arr.concat(toArray(node.Article));
+    if (node.Chapter) arr = arr.concat(...toArray(node.Chapter).map(collect));
+    if (node.Section) arr = arr.concat(...toArray(node.Section).map(collect));
+    return arr;
+  };
+  const all = [
+    ...collect(law?.LawBody?.MainProvision),
+    ...toArray(law?.LawBody?.SupplProvision?.Article),
+  ];
+  for (const a of all) {
     const k = normalizeArticleKey(a);
     if (k === artKey) return a;
   }
   return null;
 }
 
-/** Sentence 要素をテキスト化（Sentence は string or object になりうる） */
+/** Sentence → テキスト */
 function sentenceToText(s: any): string {
   if (typeof s === "string") return s;
   if (typeof s?._ === "string") return s._;
   return "";
 }
 
-/** 段落(Paragraph) → HTML文字列（号があれば <ol> ） */
+/** Paragraph → HTML */
 function renderParagraph(p: any): string {
-  // 段落本文（Sentence 羅列）
+  const pnum = p?.Num || p?.$?.Num || "";
+  const pnumHtml = pnum ? `<span class="inline-block min-w-8 mr-1 text-muted-foreground select-none">${pnum}</span>` : "";
   const sentences = toArray(p?.Sentence);
   const paraText = sentences.map(sentenceToText).join("");
-
-  // 号（Item）
   const items = toArray(p?.Item);
   let itemsHtml = "";
   if (items.length) {
-    const li = items
-      .map((it) => {
-        const num = it?.Num || it?.$?.Num || "";
-        const s = toArray(it?.Sentence).map(sentenceToText).join("");
-        // 号番号を太字＋本文
-        return `<li><span class="font-semibold">${num}</span>　${s}</li>`;
-      })
-      .join("");
-    itemsHtml = `<ol class="list-decimal pl-6 space-y-1 mt-2">${li}</ol>`;
+    const li = items.map((it) => {
+      const num = it?.Num || it?.$?.Num || "";
+      const s = toArray(it?.Sentence).map(sentenceToText).join("");
+      return `<li class="leading-relaxed"><span class="font-semibold">${num}</span>　${s}</li>`;
+    }).join("");
+    itemsHtml = `<ol class="list-decimal list-outside pl-6 space-y-1 mt-2">${li}</ol>`;
   }
-
-  return `<p class="mb-3 leading-relaxed">${paraText}</p>${itemsHtml}`;
+  return `<div class="mb-3 leading-relaxed">${pnumHtml}<span>${paraText}</span>${itemsHtml}</div>`;
 }
 
-/** Article → 階層HTML（見出し＋Paragraph/Item） */
+/** Article → HTML */
 export function renderArticleHtml(article: any, artKey: string): string {
-  const titleRaw = article?.ArticleTitle || `第${artKey}条`;
+  const titleRaw = article?.ArticleTitle || article?.$?.Title || `第${artKey}条`;
   const title = typeof titleRaw === "string" ? titleRaw : `第${artKey}条`;
-
-  // 前段（前文）: Paragraph 群
   const paragraphs = toArray(article?.Paragraph);
   const bodyHtml = paragraphs.map(renderParagraph).join("");
-
-  // 付属（SupplementaryProvision 等）まではここでは扱わない（必要なら拡張）
-
-  return `
-    <header class="mb-3">
-      <h2 class="text-xl font-semibold">${title}</h2>
-    </header>
-    ${bodyHtml || "<p>本文を抽出できませんでした。</p>"}
-  `;
-}
-
-/** lawId + artKey から HTML を取得（1関数で完結） */
-export async function getArticleHtml(lawId: string, artKey: string) {
-  const law = await fetchLawJson(lawId);
-  const article = findArticleByKey(law, artKey);
-  if (!article) return { html: "<p>該当条が見つかりませんでした。</p>", title: law?.LawName ?? "" };
-  const html = renderArticleHtml(article, artKey);
-  return { html, title: law?.LawName ?? "" };
+  return `<header class="mb-2"><h2 class="text-xl font-semibold">${title}</h2></header>${bodyHtml || ""}`;
 }
