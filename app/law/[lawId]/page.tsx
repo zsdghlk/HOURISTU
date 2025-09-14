@@ -1,6 +1,6 @@
 import { fetchLawJson, toArray } from "@/lib/egov";
 
-/** Article を木構造から収集（Article 以外は追わない） */
+/** Article を木構造から収集 */
 function collectArticles(node: any): any[] {
   if (!node || typeof node !== "object") return [];
   let out: any[] = [];
@@ -15,7 +15,7 @@ function collectArticles(node: any): any[] {
   return out;
 }
 
-/** ParagraphSentence / Sentence からテキストを集める（再帰） */
+/** Sentence 系をまとめて文字列化 */
 function collectSentences(node: any): string[] {
   if (!node) return [];
   if (typeof node === "string") return [node];
@@ -42,19 +42,22 @@ function renderParagraph(p: any): string {
   return `<p>${num ? `<span class="mr-2">${num}</span>` : ""}${text}</p>`;
 }
 
-/** 条レンダリング（見出し＋本文） */
+/** 条レンダリング（条番号 → 見出し → 本文） */
 function renderArticlePlain(a: any, fallbackKey: string): string {
-  const cap =
-    (typeof a?.ArticleCaption === "string" ? a.ArticleCaption : a?.ArticleCaption?._) || "";
   const ttl =
     (typeof a?.ArticleTitle === "string" ? a.ArticleTitle : a?.ArticleTitle?._) ||
     (typeof a?.$?.Num === "string" ? a.$.Num : "") || fallbackKey;
 
+  const cap =
+    (typeof a?.ArticleCaption === "string" ? a.ArticleCaption : a?.ArticleCaption?._) || "";
+
   const paragraphs = toArray(a?.Paragraph);
   const bodyHtml = paragraphs.map(renderParagraph).join("");
+
+  // ここで左右を入れ替える（条番号 → 見出し）
   const heading =
     `<h3 class="text-lg font-semibold mt-8 mb-2">` +
-    `${cap ? `<span class="mr-2">${cap}</span>` : ""}${ttl}` +
+    `${ttl}${cap ? `　${cap}` : ""}` +
     `</h3>`;
   return heading + bodyHtml;
 }
@@ -68,25 +71,21 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
     (typeof law?.LawTitle === "string" ? law?.LawTitle : law?.LawTitle?._) ||
     law?.LawName || "（無題の法令）";
 
-  /** 施行日情報（EnactStatement は文字列 or 文字列配列）だけを安全に抽出 */
   const enactHtml = toArray(law?.EnactStatement)
     .map((x: any) => (typeof x === "string" ? x : (x?._ ?? "")))
     .filter(Boolean)
     .map((t) => `<p>${t}</p>`)
     .join("");
 
-  /** 本文（MainProvision 配下の Article のみ） */
   const mainArticles = collectArticles(body?.MainProvision);
   const mainHtml = mainArticles.map((a: any, i: number) => renderArticlePlain(a, String(i + 1))).join("");
 
-  /** 附則・改正（各ノード配下の Article のみ）。text-sm で軽め表示 */
   const supplArticles = collectArticles(body?.SupplProvision);
   const supplHtml = supplArticles.map((a: any, i: number) => renderArticlePlain(a, `附則${i + 1}`)).join("");
 
   const amendArticles = collectArticles(body?.AmendProvision);
   const amendHtml = amendArticles.map((a: any, i: number) => renderArticlePlain(a, `改正${i + 1}`)).join("");
 
-  /** 改正年月日（AmendProvision 直下にメタがある場合のみ軽く表示）*/
   const amendDates = (() => {
     const info = (body as any)?.AmendProvision?.AmendLawInfo;
     if (!info) return "";
@@ -99,7 +98,6 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
     <main className="mx-auto max-w-3xl p-6">
       <h1 className="text-2xl font-bold mb-6">{title}</h1>
 
-      {/* 施行日情報（小さめ） */}
       {enactHtml && (
         <section className="mb-6 text-sm">
           <h2 className="text-lg font-semibold mb-2">施行日情報</h2>
@@ -107,12 +105,10 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
         </section>
       )}
 
-      {/* 本文 */}
       <article className="prose dark:prose-invert max-w-none">
         {mainHtml ? <div dangerouslySetInnerHTML={{ __html: mainHtml }} /> : <p>本文が見つかりませんでした。</p>}
       </article>
 
-      {/* 附則（小さめ） */}
       {supplHtml && (
         <section className="mt-10 text-sm">
           <h2 className="text-lg font-semibold mb-2">附則</h2>
@@ -120,7 +116,6 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
         </section>
       )}
 
-      {/* 改正経過（小さめ） */}
       {amendHtml && (
         <section className="mt-10 text-sm">
           <h2 className="text-lg font-semibold mb-2">改正経過</h2>
@@ -128,7 +123,6 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
         </section>
       )}
 
-      {/* 改正年月日（小さめ、あれば） */}
       {amendDates && (
         <section className="mt-10 text-sm">
           <h2 className="text-lg font-semibold mb-2">改正年月日</h2>
