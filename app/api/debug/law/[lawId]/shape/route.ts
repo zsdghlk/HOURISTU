@@ -3,8 +3,8 @@ import { fetchLawJson, toArray } from "@/lib/egov";
 const collectGeneric = (node: any, path = "root", paths: string[] = []): any[] => {
   if (!node) return [];
   let arr: any[] = [];
-  if (node.Article) {
-    const arts = toArray(node.Article);
+  if ((node as any).Article) {
+    const arts = toArray((node as any).Article);
     if (paths.length < 20) paths.push(path + ".Article[x]");
     arr = arr.concat(arts);
   }
@@ -37,51 +37,38 @@ function shapeKeys(node: any, depth = 0, maxDepth = 3): any {
   return out;
 }
 
-export async function GET(
-  _req: Request,
-  ctx: { params: Promise<{ lawId: string }> }
-) {
+const s2t = (s: any): string => typeof s === "string" ? s : (s?._ ?? "");
+
+export async function GET(_req: Request, ctx: { params: Promise<{ lawId: string }> }) {
   const { lawId } = await ctx.params;
   const law = await fetchLawJson(lawId);
   const body = law?.LawBody ?? {};
   const paths: string[] = [];
-  const articles = collectGeneric(body?.MainProvision, "MainProvision", paths);
 
-  const firstArticle = articles[0];
-  const firstParagraph = firstArticle?.Paragraph ? toArray(firstArticle.Paragraph)[0] : null;
-  const firstItem = firstParagraph?.Item ? toArray(firstParagraph.Item)[0] : null;
+  const articles = collectGeneric(body?.MainProvision, "MainProvision", paths);
+  const a0 = articles[0] || {};
+  const p0 = toArray(a0?.Paragraph)[0] || {};
+  const ps0 = p0?.ParagraphSentence ?? null;
+  const sArr = ps0?.Sentence ? toArray(ps0.Sentence) : null;
 
   const summary = {
     lawId,
-    body_keys: Object.keys(body),
     counts: {
-      main_direct: toArray(body?.MainProvision?.Article).length,
       main_nested: articles.length,
-      suppl_direct: toArray(body?.SupplProvision?.Article).length,
-      amend_direct: toArray(body?.AmendProvision?.Article).length,
     },
     sample_article_paths: paths,
     main_keys_tree: shapeKeys(body?.MainProvision, 0, 3),
 
-    // ★ デバッグ対象
-    first_article_keys: firstArticle ? Object.keys(firstArticle) : null,
-    first_paragraph_keys: firstParagraph ? Object.keys(firstParagraph) : null,
-    first_paragraph_sentence_types: firstParagraph?.Sentence
-      ? toArray(firstParagraph.Sentence).map((s: any) => typeof s)
-      : null,
-    first_paragraph_sentence_sample: firstParagraph?.Sentence
-      ? JSON.stringify(toArray(firstParagraph.Sentence)[0])
-      : null,
-    first_item_keys: firstItem ? Object.keys(firstItem) : null,
-    first_item_sentence_types: firstItem?.Sentence
-      ? toArray(firstItem.Sentence).map((s: any) => typeof s)
-      : null,
-    first_item_sentence_sample: firstItem?.Sentence
-      ? JSON.stringify(toArray(firstItem.Sentence)[0])
-      : null,
+    // 追加デバッグ
+    first_article_keys: Object.keys(a0 || {}),
+    first_paragraph_keys: Object.keys(p0 || {}),
+    paragraph_sentence_type: ps0 ? (Array.isArray(ps0) ? "array" : typeof ps0) : null,
+    paragraph_sentence_keys: ps0 && !Array.isArray(ps0) && typeof ps0 === "object" ? Object.keys(ps0) : null,
+    sentence_types: sArr ? Array.from(new Set(sArr.map(x => typeof x === "string" ? "string" : (x && typeof x._ === "string") ? "object._" : typeof x))) : null,
+    sentence_sample_texts: sArr ? sArr.slice(0,3).map(s2t) : null
   };
 
   return new Response(JSON.stringify(summary, null, 2), {
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: { "content-type": "application/json; charset=utf-8" }
   });
 }
