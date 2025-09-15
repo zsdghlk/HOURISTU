@@ -38,7 +38,7 @@ function renderParagraph(p: any): string {
   return `<p>${num ? `<span class="mr-2">${num}</span>` : ""}${text}</p>`;
 }
 
-/** 条見出し */
+/** 条見出し： 条番号→見出し→本文 の順で表示（左右入替済） */
 function renderArticlePlain(a: any, fallbackKey: string): string {
   const ttl =
     (typeof a?.ArticleTitle === "string" ? a.ArticleTitle : a?.ArticleTitle?._) ||
@@ -59,89 +59,36 @@ function renderArticlePlain(a: any, fallbackKey: string): string {
 
 const sstr = (x: any) => (typeof x === "string" ? x : (x?._ ?? ""));
 
-/** 附則: SupplProvision ごとに区切り */
-
-
-export default async function LawPage(props: { params: Promise<{ lawId: string }> }) {
-  const { lawId } = await props.params;
-  const law = await fetchLawJson(lawId);
-  const body = law?.LawBody ?? {};
-
-  const title =
-    (typeof law?.LawTitle === "string" ? law?.LawTitle : (law?.LawTitle?._ ?? "")) ||
-    (typeof law?.LawName  === "string" ? law?.LawName  : (law?.LawName ?._ ?? "")) ||
-    "（無題の法令）";
-
-  const mainArticles = collectArticles(body?.MainProvision);
-  const mainHtml = mainArticles.map((a, i) => renderArticlePlain(a, String(i + 1))).join("");
-
-  const hasSuppl = !!body?.SupplProvision;
-  const supplHtml = renderSupplAll(body);
-
-  const hasAmend = !!body?.AmendProvision;
-
-  const aboutHtml =
-    hasSuppl || hasAmend
-      ? `<div id="about-law-sections" class="mb-6 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/30 p-4 text-sm leading-relaxed">
-           <p class="mb-2"><span class="font-bold text-blue-700 dark:text-blue-300">📖 本文</span> …… 法律の本体部分（第1条〜最終条）。</p>
-           ${hasSuppl ? `<p class="mb-0"><span class="font-bold text-green-700 dark:text-green-300">📌 附則</span> …… 施行期日・経過措置・特例など。改正のたびに附則が追加され、附則内でも「第一条」から番号が再開する場合があります。</p>` : ``}
-         </div>`
-      : "";
-
-  return (
-    <main className="mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-bold mb-6">{title}</h1>
-      <div dangerouslySetInnerHTML={{ __html: aboutHtml }} />
-      <article className="prose dark:prose-invert max-w-none">
-        <div dangerouslySetInnerHTML={{ __html: mainHtml }} />
-      </article>
-      {hasSuppl && (
-        <section className="mt-10 text-sm" id="suppl-section">
-          <h2 className="text-lg font-semibold mb-2">附則</h2>
-          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: supplHtml }} />
-        </section>
-      )}
-    </main>
-  );
-}
-
-// ===== 汎用: グループ見出し（附則/改正経過 などで再利用） =====
-function renderGroupHeader(label: string, n: number, amendLawNum?: string): string {
-  const lawBadge = amendLawNum
-    ? `<span class="inline-flex items-center rounded-full border border-emerald-300/70 dark:border-emerald-500/50
-                      bg-emerald-50 dark:bg-emerald-900/30
-                      px-2 py-0.5 text-xs text-emerald-800 dark:text-emerald-200">${amendLawNum}</span>`
-    : ``;
-
-  return `
-    <div class="relative mt-10 mb-3 not-prose suppl-head">
-      <h3 id="${label}-group-${n}" class="flex items-center gap-2 flex-wrap text-base font-semibold tracking-wide">
-        <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1
-                     text-white bg-emerald-600 dark:bg-emerald-500 text-xs">
-          ${label} <span class="opacity-90">第${n}群</span>
-        </span>
-        ${lawBadge}
-      </h3>
-      <div class="mt-2 h-px w-full bg-gradient-to-r from-emerald-500/60 via-emerald-300/30 to-transparent"></div>
-    </div>
-  `;
-}
-
-// ===== 附則を SupplProvision ごとに描画（全グループに見出し適用） =====
-function renderSupplAll(body: any): string {
+/** 附則：SupplProvision ごとに区切り＋法律番号バッジ */
+function renderSupplByProvision(body: any): string {
   const groups = toArray(body?.SupplProvision);
   if (!groups || groups.length === 0) return "";
 
-  const sstr = (x: any) => (typeof x === "string" ? x : (x?._ ?? ""));
   let html = "";
   let n = 0;
 
   for (const g of groups) {
     n += 1;
     const amendLawNum = sstr(g?.$?.AmendLawNum);
-    html += renderGroupHeader("附則", n, amendLawNum);
+    const lawBadge = amendLawNum
+      ? `<span class="ml-2 inline-block rounded px-1 bg-green-700 text-white dark:bg-green-400 dark:text-slate-900">${amendLawNum}</span>`
+      : "";
 
-    // 本文：Article 優先 → Paragraph → Sentence の順で
+    html += `
+      <div class="mt-10 mb-2">
+        <span class="inline-flex items-center gap-2 text-xs font-bold
+                       text-green-800 bg-green-100
+                       dark:text-green-200 dark:bg-green-900/40
+                       px-2 py-1 rounded">
+          <span>附則</span>
+          <span class="inline-block rounded px-1
+                       bg-green-600 text-white
+                       dark:bg-green-400 dark:text-slate-900">第${n}群</span>
+          ${lawBadge}
+        </span>
+      </div>
+    `;
+
     const arts = collectArticles(g);
     if (arts.length > 0) {
       html += arts.map((a: any, i: number) => renderArticlePlain(a, `附則${n}-${i + 1}`)).join("");
@@ -156,4 +103,57 @@ function renderSupplAll(body: any): string {
   }
 
   return html;
+}
+
+export default async function LawPage(props: { params: Promise<{ lawId: string }> }) {
+  const { lawId } = await props.params;
+  const law = await fetchLawJson(lawId);
+  const body = law?.LawBody ?? {};
+
+  const title =
+    (typeof law?.LawTitle === "string" ? law?.LawTitle : (law?.LawTitle?._ ?? "")) ||
+    (typeof law?.LawName  === "string" ? law?.LawName  : (law?.LawName ?._ ?? "")) ||
+    "（無題の法令）";
+
+  // 本文
+  const mainArticles = collectArticles(body?.MainProvision);
+  const mainHtml = mainArticles.map((a, i) => renderArticlePlain(a, String(i + 1))).join("");
+
+  // 附則（SupplProvision ごとに区切る）
+  const hasSuppl = !!body?.SupplProvision;
+  const supplHtml = renderSupplByProvision(body);
+
+  // （将来用）改正経過の有無フラグだけ
+  const hasAmend = !!body?.AmendProvision;
+
+  // 説明ボックス（有るものだけ）
+  const aboutHtml =
+    hasSuppl || hasAmend
+      ? `<div id="about-law-sections" class="mb-6 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/30 p-4 text-sm leading-relaxed">
+           <p class="mb-2"><span class="font-bold text-blue-700 dark:text-blue-300">📖 本文</span> …… 法律の本体部分（第1条〜最終条）。</p>
+           ${hasSuppl ? `<p class="mb-0"><span class="font-bold text-green-700 dark:text-green-300">📌 附則</span> …… 施行期日・経過措置・特例など。改正のたびに附則が追加され、附則内でも「第一条」から番号が再開する場合があります。</p>` : ``}
+         </div>`
+      : "";
+
+  return (
+    <main className="mx-auto max-w-3xl p-6">
+      <h1 className="text-2xl font-bold mb-6">{title}</h1>
+
+      {/* 説明ボックス */}
+      <div dangerouslySetInnerHTML={{ __html: aboutHtml }} />
+
+      {/* 本文 */}
+      <article className="prose dark:prose-invert max-w-none">
+        <div dangerouslySetInnerHTML={{ __html: mainHtml }} />
+      </article>
+
+      {/* 附則（存在フラグで判断） */}
+      {hasSuppl && (
+        <section className="mt-10 text-sm" id="suppl-section">
+          <h2 className="text-lg font-semibold mb-2">附則</h2>
+          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: supplHtml }} />
+        </section>
+      )}
+    </main>
+  );
 }

@@ -60,7 +60,50 @@ function renderArticlePlain(a: any, fallbackKey: string): string {
 const sstr = (x: any) => (typeof x === "string" ? x : (x?._ ?? ""));
 
 /** 附則: SupplProvision ごとに区切り */
+function renderSupplByProvision(body: any): string {
+  const groups = toArray(body?.SupplProvision);
+  if (!groups || groups.length === 0) return "";
 
+  let html = "";
+  let n = 0;
+
+  for (const g of groups) {
+    n += 1;
+    const amendLawNum = sstr(g?.$?.AmendLawNum);
+    const lawBadge = amendLawNum
+      ? `<span class="ml-2 inline-block rounded px-1 bg-green-700 text-white dark:bg-green-400 dark:text-slate-900">${amendLawNum}</span>`
+      : "";
+
+    html += `
+      <div class="mt-10 mb-2">
+        <span class="inline-flex items-center gap-2 text-xs font-bold
+                       text-green-800 bg-green-100
+                       dark:text-green-200 dark:bg-green-900/40
+                       px-2 py-1 rounded">
+          <span>附則</span>
+          <span class="inline-block rounded px-1
+                       bg-green-600 text-white
+                       dark:bg-green-400 dark:text-slate-900">第${n}群</span>
+          ${lawBadge}
+        </span>
+      </div>
+    `;
+
+    const arts = collectArticles(g);
+    if (arts.length > 0) {
+      html += arts.map((a: any, i: number) => renderArticlePlain(a, `附則${n}-${i + 1}`)).join("");
+    } else {
+      const paras = toArray(g?.Paragraph);
+      if (paras.length > 0) {
+        html += paras.map((p: any) => renderParagraph(p)).join("");
+      } else if (g?.ParagraphSentence || g?.Sentence) {
+        html += `<p>${collectSentences(g).join("")}</p>`;
+      }
+    }
+  }
+
+  return html;
+}
 
 export default async function LawPage(props: { params: Promise<{ lawId: string }> }) {
   const { lawId } = await props.params;
@@ -114,7 +157,7 @@ function renderGroupHeader(label: string, n: number, amendLawNum?: string): stri
     : ``;
 
   return `
-    <div class="relative mt-10 mb-3 not-prose suppl-head">
+    <div class="relative mt-10 mb-3">
       <h3 id="${label}-group-${n}" class="flex items-center gap-2 flex-wrap text-base font-semibold tracking-wide">
         <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1
                      text-white bg-emerald-600 dark:bg-emerald-500 text-xs">
