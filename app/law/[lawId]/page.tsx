@@ -1,65 +1,55 @@
-import { fetchLawJson, toArray } from "@/lib/egov";
+import { fetchLawJson } from "@/lib/egov";
 
-/** Article を木構造から収集 */
-function collectArticles(node: any): any[] {
-  if (!node || typeof node !== "object") return [];
-  let out: any[] = [];
-  if ((node as any).Article) out = out.concat(toArray((node as any).Article));
-  for (const k of Object.keys(node)) {
-    const v = (node as any)[k];
-    if (v && typeof v === "object") {
-      const arr = Array.isArray(v) ? v : [v];
-      for (const c of arr) out = out.concat(collectArticles(c));
-    }
+/** 文字列 or { _: string } のどちらでも拾う */
+function textOf(x: any): string {
+  if (!x) return "";
+  if (typeof x === "string") return x;
+  if (typeof x === "number") return String(x);
+  if (x._) return String(x._);
+  return "";
+}
+
+/** LawTitle / LawName を頑丈に解決（なければ ID を出す） */
+function resolveTitle(law: any, fallbackId: string): string {
+  const cands = [
+    textOf(law?.LawTitle?._),
+    textOf(law?.LawTitle),
+    textOf(law?.LawName),
+    textOf(law?.LawBody?.LawTitle?._),
+    textOf(law?.LawBody?.LawTitle),
+  ];
+  const t = cands.find((s) => s && s.trim().length > 0);
+  return t || `（法令名不明：${fallbackId}）`;
+}
+
+/** 汎用レンダラ：Article/Paragraph/Item/ParagraphSentence を順に潰して文字列化 */
+function renderNode(node: any): string {
+  if (!node) return "";
+  if (Array.isArray(node)) return node.map(renderNode).join("");
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (node._) return node._;
+
+  // 構造的なノード
+  if (node.Article) {
+    const arr = Array.isArray(node.Article) ? node.Article : [node.Article];
+    return arr.map(renderNode).join("");
   }
-  return out;
-}
-
-/** Sentence 系をまとめて文字列化 */
-function collectSentences(node: any): string[] {
-  if (!node) return [];
-  if (typeof node === "string") return [node];
-  if (typeof node === "object") {
-    const out: string[] = [];
-    if ((node as any).Sentence) {
-      for (const s of toArray((node as any).Sentence)) out.push(...collectSentences(s));
-    }
-    if ((node as any).ParagraphSentence) {
-      for (const s of toArray((node as any).ParagraphSentence)) out.push(...collectSentences(s));
-    }
-    if ((node as any)._ && typeof (node as any)._ === "string") out.push((node as any)._);
-    return out;
+  if (node.Paragraph) {
+    const arr = Array.isArray(node.Paragraph) ? node.Paragraph : [node.Paragraph];
+    return arr.map(renderNode).join("");
   }
-  return [];
-}
+  if (node.Item) {
+    const arr = Array.isArray(node.Item) ? node.Item : [node.Item];
+    return arr.map(renderNode).join("");
+  }
+  if (node.ParagraphSentence) {
+    const arr = Array.isArray(node.ParagraphSentence) ? node.ParagraphSentence : [node.ParagraphSentence];
+    return arr.map((s: any) => (typeof s === "string" ? s : (s?._ ?? ""))).join("");
+  }
 
-/** 段落レンダリング */
-function renderParagraph(p: any): string {
-  const num =
-    (typeof p?.ParagraphNum === "string" ? p.ParagraphNum : p?.ParagraphNum?._) ||
-    (typeof p?.Num === "string" ? p.Num : p?.Num?._) || "";
-  const text = collectSentences(p?.ParagraphSentence ?? p?.Sentence ?? p).join("");
-  return `<p>${num ? `<span class="mr-2">${num}</span>` : ""}${text}</p>`;
-}
-
-/** 条レンダリング（条番号 → 見出し → 本文） */
-function renderArticlePlain(a: any, fallbackKey: string): string {
-  const ttl =
-    (typeof a?.ArticleTitle === "string" ? a.ArticleTitle : a?.ArticleTitle?._) ||
-    (typeof a?.$?.Num === "string" ? a.$.Num : "") || fallbackKey;
-
-  const cap =
-    (typeof a?.ArticleCaption === "string" ? a.ArticleCaption : a?.ArticleCaption?._) || "";
-
-  const paragraphs = toArray(a?.Paragraph);
-  const bodyHtml = paragraphs.map(renderParagraph).join("");
-
-  // ここで左右を入れ替える（条番号 → 見出し）
-  const heading =
-    `<h3 class="text-lg font-semibold mt-8 mb-2">` +
-    `${ttl}${cap ? `　${cap}` : ""}` +
-    `</h3>`;
-  return heading + bodyHtml;
+  // その他のキーも一応なめる
+  return Object.keys(node).map((k) => renderNode((node as any)[k])).join("");
 }
 
 export default async function LawPage(props: { params: Promise<{ lawId: string }> }) {
@@ -67,66 +57,51 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
   const law = await fetchLawJson(lawId);
   const body = law?.LawBody ?? {};
 
-  const title =
-    (typeof law?.LawTitle === "string" ? law?.LawTitle : law?.LawTitle?._) ||
-    law?.LawName || "（無題の法令）";
+  const title = resolveTitle(law, lawId);
 
-  const enactHtml = toArray(law?.EnactStatement)
-    .map((x: any) => (typeof x === "string" ? x : (x?._ ?? "")))
-    .filter(Boolean)
-    .map((t) => `<p>${t}</p>`)
-    .join("");
+  // 本文・附則
+  const mainHtml  = renderNode(body.MainProvision);
+  const supplHtml = renderNode(body.SupplProvision);
 
-  const mainArticles = collectArticles(body?.MainProvision);
-  const mainHtml = mainArticles.map((a: any, i: number) => renderArticlePlain(a, String(i + 1))).join("");
+  // 説明ボックス（存在する要素だけを載せる／本文のみのときは非表示）
+  const hasSuppl = !!body?.SupplProvision;
+  const hasAmend = !!body?.AmendProvision; // 将来用
 
-  const supplArticles = collectArticles(body?.SupplProvision);
-  const supplHtml = supplArticles.map((a: any, i: number) => renderArticlePlain(a, `附則${i + 1}`)).join("");
-
-  const amendArticles = collectArticles(body?.AmendProvision);
-  const amendHtml = amendArticles.map((a: any, i: number) => renderArticlePlain(a, `改正${i + 1}`)).join("");
-
-  const amendDates = (() => {
-    const info = (body as any)?.AmendProvision?.AmendLawInfo;
-    if (!info) return "";
-    const txt = collectSentences(info).join("") ||
-      toArray(info).map((x: any) => (typeof x === "string" ? x : (x?._ ?? ""))).join("");
-    return txt ? `<p>${txt}</p>` : "";
-  })();
+  const aboutLines: string[] = [];
+  if (hasSuppl || hasAmend) {
+    // 本文は常に
+    aboutLines.push(`<p class="mb-2"><span class="font-bold text-blue-700 dark:text-blue-300">📖 本文</span> …… 法律の本体部分（第1条〜最終条）。</p>`);
+    if (hasSuppl) {
+      aboutLines.push(`<p class="mb-2"><span class="font-bold text-green-700 dark:text-green-300">�� 附則</span> …… 制定や改正に伴う施行期日・経過措置・特例など。改正のたびに新しい附則が追加されるため、附則内でも「第一条」から番号が再開する場合があります。</p>`);
+    }
+    if (hasAmend) {
+      aboutLines.push(`<p class="mb-0"><span class="font-bold text-purple-700 dark:text-purple-300">📝 改正経過</span> …… 歴代の改正法の附則などを時系列で表示します。</p>`);
+    }
+  }
+  const aboutHtml =
+    aboutLines.length > 0
+      ? `<div id="about-law-sections" data-has-suppl="${hasSuppl}" data-has-amend="${hasAmend}" class="mb-6 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/30 p-4 text-sm leading-relaxed">` +
+        aboutLines.join("") +
+        `</div>`
+      : "";
 
   return (
     <main className="mx-auto max-w-3xl p-6">
       <h1 className="text-2xl font-bold mb-6">{title}</h1>
 
-      {enactHtml && (
-        <section className="mb-6 text-sm">
-          <h2 className="text-lg font-semibold mb-2">施行日情報</h2>
-          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: enactHtml }} />
-        </section>
-      )}
+      {/* 説明ボックス（条件付き） */}
+      <div dangerouslySetInnerHTML={{ __html: aboutHtml }} />
 
+      {/* 本文 */}
       <article className="prose dark:prose-invert max-w-none">
-        {mainHtml ? <div dangerouslySetInnerHTML={{ __html: mainHtml }} /> : <p>本文が見つかりませんでした。</p>}
+        <div dangerouslySetInnerHTML={{ __html: mainHtml }} />
       </article>
 
+      {/* 附則（条件付き） */}
       {supplHtml && (
         <section className="mt-10 text-sm">
           <h2 className="text-lg font-semibold mb-2">附則</h2>
           <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: supplHtml }} />
-        </section>
-      )}
-
-      {amendHtml && (
-        <section className="mt-10 text-sm">
-          <h2 className="text-lg font-semibold mb-2">改正経過</h2>
-          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: amendHtml }} />
-        </section>
-      )}
-
-      {amendDates && (
-        <section className="mt-10 text-sm">
-          <h2 className="text-lg font-semibold mb-2">改正年月日</h2>
-          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: amendDates }} />
         </section>
       )}
     </main>
