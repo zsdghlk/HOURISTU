@@ -107,31 +107,24 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
 
 // ===== 汎用: グループ見出し（附則/改正経過 などで再利用） =====
 function renderGroupHeader(label: string, n: number, amendLawNum?: string): string {
-
   const lawBadge = amendLawNum
-
-    ? `<span class="suppl-head ml-2">${amendLawNum}</span>`
-
+    ? `<span class="inline-flex items-center rounded-full border border-emerald-300/70 dark:border-emerald-500/50
+                      bg-emerald-50 dark:bg-emerald-900/30
+                      px-2 py-0.5 text-xs text-emerald-800 dark:text-emerald-200">${amendLawNum}</span>`
     : ``;
 
-
-
   return `
-
-    <div class="mt-8 mb-4">
-
-      <span id="${label}-group-${n}" class="suppl-head font-bold">
-
-        ${label} 第${n}群
-
-      </span>
-
-      ${lawBadge}
-
+    <div class="relative mt-10 mb-3 not-prose suppl-head">
+      <h3 id="${label}-group-${n}" class="flex items-center gap-2 flex-wrap text-base font-semibold tracking-wide">
+        <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1
+                     text-white bg-emerald-600 dark:bg-emerald-500 text-xs">
+          ${label} <span class="opacity-90">第${n}群</span>
+        </span>
+        ${lawBadge}
+      </h3>
+      <div class="mt-2 h-px w-full bg-gradient-to-r from-emerald-500/60 via-emerald-300/30 to-transparent"></div>
     </div>
-
   `;
-
 }
 
 // ===== 附則を SupplProvision ごとに描画（全グループに見出し適用） =====
