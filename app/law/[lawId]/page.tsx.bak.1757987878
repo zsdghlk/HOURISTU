@@ -113,7 +113,7 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
       <h1 className="text-2xl font-bold mb-6">{title}</h1>
       <div dangerouslySetInnerHTML={{ __html: decorateParaNums(aboutHtml) }} />
       <article className="prose dark:prose-invert max-w-none">
-        <div dangerouslySetInnerHTML={{ __html: decorateParaNums(mainHtml) }} />
+        <div dangerouslySetInnerHTML={{ __html: (() => { const _h = decorateParaNums(mainHtml); console.log("DBG after decorate", _h.slice(0,200)); return _h; })()/* log */} }} />
       </article>
       {hasSuppl && (
         <section className="mt-10 text-sm" id="suppl-section">

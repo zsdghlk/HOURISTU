@@ -1,0 +1,7 @@
+export function decorateParaNums(html: string): string {
+  if (!html) return html;
+  // クラス属性に para と num の両方を含む要素（順不同・大文字小文字無視）を対象
+  // 例: <span class="ParagraphNum">2</span>, <span class="para-num">2</span>, <em class="num para">2</em>
+  const re = /(<[^>]*class="[^"]*(?:para[^"]*num|num[^"]*para)[^"]*"[^>]*>\s*)(\d+)(\s*<\/[^>]+>)/gi;
+  return html.replace(re, (_m, a, n, b) => (n === "1" ? "" : a + `第${n}項` + b));
+}

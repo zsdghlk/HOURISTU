@@ -1,5 +1,3 @@
-import { decorateParaNums } from "../../../utils/htmlFilters";
-  try { console.log("DBG articles sample", JSON.stringify((articles||[]).slice(0,3), null, 2)); } catch(e) {}
 import { fetchLawJson, toArray } from "@/lib/egov";
 
 /** Article を木構造から収集（どのキーでも潜る） */
@@ -69,7 +67,6 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
   const law = await fetchLawJson(lawId);
   const body = law?.LawBody ?? {};
   let title = "";
-  let titleSource: string = "none";
   if (sstr((body as any)?.LawTitle)) {
     title = sstr((body as any)?.LawTitle);
     titleSource = "Body.LawTitle";
@@ -91,6 +88,10 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
   }
   console.log("DBG title", { lawId, title, titleSource });
 
+  let title =
+    (typeof law?.LawTitle === "string" ? law?.LawTitle : (law?.LawTitle?._ ?? "")) ||
+    (typeof law?.LawName  === "string" ? law?.LawName  : (law?.LawName ?._ ?? "")) ||
+    "（無題の法令）";
 
   const mainArticles = collectArticles(body?.MainProvision);
   const mainHtml = mainArticles.map((a, i) => renderArticlePlain(a, String(i + 1))).join("");
@@ -111,14 +112,14 @@ export default async function LawPage(props: { params: Promise<{ lawId: string }
   return (
     <main className="mx-auto max-w-3xl p-6">
       <h1 className="text-2xl font-bold mb-6">{title}</h1>
-      <div dangerouslySetInnerHTML={{ __html: decorateParaNums(aboutHtml) }} />
+      <div dangerouslySetInnerHTML={{ __html: aboutHtml }} />
       <article className="prose dark:prose-invert max-w-none">
-        <div dangerouslySetInnerHTML={{ __html: decorateParaNums(mainHtml) }} />
+        <div dangerouslySetInnerHTML={{ __html: mainHtml }} />
       </article>
       {hasSuppl && (
         <section className="mt-10 text-sm" id="suppl-section">
           <h2 className="text-lg font-semibold mb-2">附則</h2>
-          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: decorateParaNums(supplHtml) }} />
+          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: supplHtml }} />
         </section>
       )}
     </main>
@@ -185,4 +186,26 @@ function renderSupplAll(body: any): string {
   return html;
 }
 
+// --- patched title decision ---
+let title = "";
+if (sstr((body as any)?.LawTitle)) {
+  title = sstr((body as any)?.LawTitle);
+  titleSource = "Body.LawTitle";
+} else if (sstr((body as any)?.LawName)) {
+  title = sstr((body as any)?.LawName);
+  titleSource = "Body.LawName";
+} else if (sstr((law as any)?.LawTitle)) {
+  title = sstr((law as any)?.LawTitle);
+  titleSource = "LawTitle";
+} else if (sstr((law as any)?.LawName)) {
+  title = sstr((law as any)?.LawName);
+  titleSource = "LawName";
+} else if (lawNum) {
+  title = `（${lawNum}）`;
+  titleSource = "LawNum";
+} else {
+  title = "（無題の法令）";
+  titleSource = "fallback";
+}
+console.log("DBG title", { lawId, title, titleSource });
 // --- end patched ---

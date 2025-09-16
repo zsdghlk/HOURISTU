@@ -1,10 +1,4 @@
 import { formatParagraphNum } from "../utils/lawFormat";
-function __formatParaNumsInHtml(html: string): string {
-  if (!html) return html;
-  // <span class="...para...num...">2</span> → 第2項（1は慣例で非表示）
-  return html.replace(/(<span[^>]*class="[^"]*para[^"]*num[^"]*"[^>]*>\s*)(\d+)(\s*<\/span>)/g,
-    (_m, a, n, b) => (n === '1' ? '' : a + `第${n}項` + b));
-}
 export type Paragraph = { num?: string; text: string };
 export type Article = {
   key: string;

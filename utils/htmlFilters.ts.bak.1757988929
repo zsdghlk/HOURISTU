@@ -1,0 +1,56 @@
+/**
+ * 段落番号の表示を「第N項」に統一するフィルタ。
+ * - <span class="...para...num...">2</span>
+ * - <span class="ParagraphNum">２</span>
+ * など、順不同・大文字小文字・全角数字すべて対応
+ * 第1項は慣例で空表示（非表示）
+ */
+export function decorateParaNums(html: string): string {
+  if (!html) return html;
+
+  // 半角/全角数字
+  const DIG = '[0-9０-９]+';
+
+  // class 属性に para と num が順不同で両方含まれるケース（大文字小文字無視）
+  const reParaNum = new RegExp(
+    `(<[^>]*class="[^"]*(?:para[^"]*num|num[^"]*para)[^"]*"[^>]*>\\s*)(${DIG})(\\s*<\\/[^>]+>)`,
+    'gi'
+  );
+
+  // ParagraphNum / ParaNum 等のまとめて拾うケース
+  const reParagraphNum = new RegExp(
+    `(<[^>]*class="[^"]*(?:ParagraphNum|ParaNum|para-num|para_num)[^"]*"[^>]*>\\s*)(${DIG})(\\s*<\\/[^>]+>)`,
+    'gi'
+  );
+
+  let count = 0;
+  const replacer = (_m: string, a: string, n: string, b: string) => {
+    // 全角→半角へ寄せて判定
+    const half = n.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    if (half === '1') return '';            // 第1項は非表示
+    count++;
+    return a + `第${half}項` + b;
+  };
+
+  let out = html.replace(reParaNum, replacer).replace(reParagraphNum, replacer);
+
+  // （必要なら）素の <span>2</span> も拾う保険。直近に para/num を含む class を持つ親を想定できないので、
+  // class無しでも段落頭っぽい <span>数字</span> を控えめに置換（マッチし過ぎないように article 内の span を想定）
+  const rePlainSpan = new RegExp(`(<span[^>]*>\\s*)(${DIG})(\\s*<\\/span>)`, 'gi');
+  out = out.replace(rePlainSpan, (_m, a, n, b) => {
+    const half = n.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    // 1桁〜2桁のみを対象（過剰置換抑制）
+    if (!/^[0-9]{1,2}$/.test(half)) return a + n + b;
+    if (half === '1') return '';
+    count++;
+    return a + `第${half}項` + b;
+  });
+
+  try {
+    // 変換件数をログ（サーバーログに出ます）
+    // 先頭 180 文字だけ確認用に出力
+    // eslint-disable-next-line no-console
+    console.log('DBG decorateParaNums count=', count, ' head=', out.slice(0, 180));
+  } catch {}
+  return out;
+}

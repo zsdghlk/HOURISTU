@@ -8,10 +8,8 @@ export function formatArticleHeading(input: unknown): string {
 }
 
 export function formatParagraphNum(num: unknown, indexZeroBased?: number): string {
-  console.log("DBG formatParagraphNum", { num, indexZeroBased });
+  // "2" -> "（二）" / undefined か 0段落目なら空
   const raw = String(num ?? "").trim();
-  if (!raw || raw === "1") return "";
-  const n = Number(raw);
-  if (!Number.isNaN(n)) return `第${n}項`;
-  return `第${raw}項`;
+  if (!raw || raw === "1") return "";     // 第1段落は通例番号省略
+  return `（${raw}） `;
 }

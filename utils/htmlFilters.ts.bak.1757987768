@@ -1,0 +1,7 @@
+export function decorateParaNums(html: string): string {
+  if (!html) return html;
+  return html.replace(
+    /(<span[^>]*class="[^"]*para[^"]*num[^"]*"[^>]*>\s*)(\d+)(\s*<\/span>)/g,
+    (_m, a, n, b) => (n === "1" ? "" : a + `第${n}項` + b)
+  );
+}
