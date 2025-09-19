@@ -1,0 +1,65 @@
+import { parseStringPromise } from "xml2js";
+
+/** util */
+export function toArray<T>(x: T | T[] | undefined): T[] {
+  if (!x) return [];
+  return Array.isArray(x) ? x : [x];
+}
+function sentenceToText(s: any): string {
+  if (typeof s === "string") return s;
+  if (s && typeof s._ === "string") return s._;
+  return "";
+}
+
+function renderParagraphLabel(numRaw: string | undefined): string {
+  if (!numRaw) return "";
+  const n = String(numRaw).trim();
+  if (n === "" || n === "1") return "";
+  return `第${n}項`;
+}
+
+function renderParagraph(p: any): string {
+  const pnumLabel = renderParagraphLabel(p?.Num || p?.$?.Num || p?.ParagraphNum);
+  const pnumHtml = pnumLabel
+    ? `<span class="inline-block mr-1 text-muted-foreground select-none">${pnumLabel}</span>`
+    : "";
+
+  // 段落本文
+  const sentences = toArray(p?.ParagraphSentence?.Sentence ?? p?.Sentence);
+  const paraText = sentences.map(sentenceToText).join("");
+
+  // 箇条書き（ItemTitle対応）
+  const items = toArray(p?.Item);
+  let itemsHtml = "";
+  if (items.length) {
+    const li = items
+      .map((it) => {
+        const title = sentenceToText(it?.ItemTitle);
+        const texts: string[] = [];
+        texts.push(
+          ...toArray(it?.ItemSentence?.Sentence).map(sentenceToText),
+          ...toArray(it?.ParagraphSentence?.Sentence).map(sentenceToText),
+          ...toArray(it?.Sentence).map(sentenceToText),
+          ...(typeof it?._ === "string" ? [it._] : [])
+        );
+        const body = texts.join("").trim();
+        return `<li class="leading-relaxed"><span class="font-semibold">${title}</span>${body ? "　" + body : ""}</li>`;
+      })
+      .join("");
+    itemsHtml = `<ol class="list-decimal list-outside pl-6 space-y-1 mt-2">${li}</ol>`;
+  }
+
+  // 本文が空でも items があれば (本文なし) は不要
+  const textHtml =
+    paraText ? `<span>${paraText}</span>` : itemsHtml ? "" : `<span class="text-muted-foreground">(本文なし)</span>`;
+
+  return `<div class="mb-3 leading-relaxed">${pnumHtml}${textHtml}${itemsHtml}</div>`;
+}
+
+export function renderArticleHtml(article: any, fallbackKey: string): string {
+  const titleRaw = article?.ArticleTitle || article?.$?.Title || `第${fallbackKey}条`;
+  const title = typeof titleRaw === "string" ? titleRaw : `第${fallbackKey}条`;
+  const paragraphs = toArray(article?.Paragraph);
+  const bodyHtml = paragraphs.map(renderParagraph).join("");
+  return `<header class="mb-2"><h2 class="text-xl font-semibold">${title}</h2></header>${bodyHtml || ""}`;
+}
