@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { fetchLawJson, toArray, renderArticleHtml } from "@/lib/egov";
+import {
+  fetchLawJson,
+  listArticleKeys,
+  findArticleByKey,
+  renderArticleHtml,
+  toArray,
+} from "@/lib/egov";
 
 /** Preamble(前文) → HTML */
 function renderPreambleHtml(law: any): string {
@@ -8,6 +14,7 @@ function renderPreambleHtml(law: any): string {
   const paras = toArray(pre.Paragraph);
   if (!paras.length) return "";
   const body = paras.map((p: any) => {
+    // 憲法の前文は Paragraph > ParagraphSentence > Sentence の入れ子
     const ss = toArray(p?.ParagraphSentence?.Sentence);
     const text = ss.map((s: any) => (typeof s === "string" ? s : s?._ || "")).join("");
     return `<div class="mb-3 leading-relaxed">${text}</div>`;
@@ -17,29 +24,14 @@ function renderPreambleHtml(law: any): string {
     : "";
 }
 
-/** ツリーを辿って Article を全部フラットに収集（順序維持） */
-function collectArticles(node: any): any[] {
-  if (!node) return [];
-  let acc: any[] = [];
-  if (node.Article) acc = acc.concat(toArray(node.Article));
-  // 深い入れ子すべて辿る
-  const kids = [
-    ...toArray(node.Part),
-    ...toArray(node.Division),
-    ...toArray(node.Subsection),
-    ...toArray(node.Chapter),
-    ...toArray(node.Section),
-  ];
-  for (const k of kids) acc = acc.concat(collectArticles(k));
-  return acc;
-}
-
 export async function GET(_req: Request, ctx: { params: Promise<{ lawId: string }> }) {
   try {
     const { lawId } = await ctx.params;
 
+    // e-Gov V1 XML → JSON(Law)
     const law = await fetchLawJson(lawId);
 
+    // タイトル候補
     const title =
       law?.LawBody?.LawTitle ||
       law?.LawTitle ||
@@ -47,16 +39,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ lawId: string 
       law?.title ||
       "（無題の法令）";
 
-    // 前文
-    let html = renderPreambleHtml(law);
+    // 1) Article（本文・附則）をHTML化
+    const keys = listArticleKeys(law);
+    let html = keys
+      .map((k) => {
+        const art = findArticleByKey(law, k);
+        return art ? renderArticleHtml(art, k) : "";
+      })
+      .join("");
 
-    // 本文（MainProvision）+ 附則（SupplProvision）をフラット化して順に描画
-    const mainArts  = collectArticles(law?.LawBody?.MainProvision);
-    const supplArts = toArray(law?.LawBody?.SupplProvision?.Article);
-    const all = [...mainArts, ...supplArts];
-
-    if (all.length) {
-      html += all.map((art, i) => renderArticleHtml(art, String(i + 1))).join("");
+    // 2) もし Article が取れなかった/ゼロなら、Preamble(前文)を出す
+    if (!html || html.trim().length === 0) {
+      html = renderPreambleHtml(law);
+    } else {
+      // Article がある場合でも、Preamble が存在すれば最初に差し込んでおく
+      const pre = renderPreambleHtml(law);
+      if (pre) html = pre + html;
     }
 
     return NextResponse.json(
