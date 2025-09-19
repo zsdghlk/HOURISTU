@@ -1,0 +1,32 @@
+import { parseLawXml } from "@/lib/parseLawXml";
+
+/**
+ * e-Gov から法令XMLを取得して parse
+ * 正式なV1エンドポイント: https://{laws|elaws}.e-gov.go.jp/api/1/lawdata/{LawId}
+ */
+export async function fetchLaw(lawId: string) {
+  const hosts = ["https://laws.e-gov.go.jp", "https://elaws.e-gov.go.jp"];
+
+  let lastErr: Error | null = null;
+  for (const host of hosts) {
+    const url = `${host}/api/1/lawdata/${encodeURIComponent(lawId)}`;
+    try {
+      console.log("[egov] try:", url);
+      const res = await fetch(url, { redirect: "follow" });
+      console.log("[egov] status:", res.status, res.statusText, "url:", res.url);
+      if (!res.ok) {
+        lastErr = new Error(`e-Gov fetch failed: ${res.status} ${res.statusText} at ${url}`);
+        continue;
+      }
+      const xml = await res.text();
+      console.log("[egov] xml length:", xml.length, "head:", xml.slice(0, 80).replace(/\s+/g, " "));
+      if (!xml || xml.length < 50) throw new Error("e-Gov XML too short");
+      return parseLawXml(xml);
+    } catch (e: any) {
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      console.log("[egov] error:", lastErr.message);
+      // 次ホストへフォールバック
+    }
+  }
+  throw (lastErr ?? new Error("e-Gov fetch failed (no hosts succeeded)"));
+}

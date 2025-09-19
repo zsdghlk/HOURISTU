@@ -1,0 +1,12 @@
+import { NextResponse } from "next/server";
+import { loadLawPayload } from "@/lib/law/loadLaw";
+
+export async function GET(_req: Request, context: { params: Promise<{ lawId: string }> }) {
+  try {
+    const { lawId } = await context.params;   // ← await 必須
+    const payload = await loadLawPayload(lawId);
+    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: String(err?.message ?? err) }, { status: 500 });
+  }
+}

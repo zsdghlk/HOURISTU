@@ -1,0 +1,31 @@
+import { fetchLaw } from "@/lib/rokupo-bridge";
+import * as API from "@/lib/rokupo-bridge";
+import { getEasyMap } from "@/lib/easy/sentences";
+
+/** ページ用の整形済み HTML を返す */
+export async function loadLawPayload(lawId: string) {
+  const law = await fetchLaw(lawId);
+  if (!law) return { ok: false as const };
+
+  // { "1": "やさしい文", "3": "...", ... }
+  const easyMap = await getEasyMap(lawId);
+
+  const renderArticle = (a: { paragraphs: { id: string; text: string }[] }) => {
+    const normal = a.paragraphs.map(p => p.text).join("");
+    const easy   = a.paragraphs.map(p => easyMap[p.id] ?? p.text).join("");
+    return { normal, easy };
+  };
+
+  const about = renderArticle(law.about);
+  const main  = renderArticle(law.main);
+  const suppl = renderArticle(law.suppl);
+
+  return {
+    ok: true as const,
+    lawId,
+    hasSuppl: !!(suppl.normal?.trim()),
+    about,
+    main,
+    suppl,
+  };
+}

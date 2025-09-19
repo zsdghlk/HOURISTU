@@ -1,0 +1,30 @@
+import { Suspense } from "react";
+import LawView from "./LawView";
+import { loadLawPayload } from "@/lib/law/loadLaw";
+
+export const dynamic = "force-dynamic";
+
+type Props = { params: { lawId: string }, searchParams?: Record<string, string | string[]> };
+
+export default async function Page({ params, searchParams }: Props) {
+  const lawId = params.lawId;
+  const data = await loadLawPayload(lawId);
+  if (!data.ok) throw new Error(`LAW_NOT_FOUND: ${lawId}`);
+
+  const preferEasy = String(searchParams?.easy ?? "") === "1";
+
+  return (
+    <Suspense>
+      <LawView
+        aboutNormal={data.about.normal}
+        aboutEasy={data.about.easy}
+        mainNormal={data.main.normal}
+        mainEasy={data.main.easy}
+        supplNormal={data.suppl.normal}
+        supplEasy={data.suppl.easy}
+        hasSuppl={data.hasSuppl}
+        preferEasy={preferEasy}
+      />
+    </Suspense>
+  );
+}

@@ -1,0 +1,25 @@
+import { fetchLaw } from "@/lib/egov";
+import { getEasyMap } from "@/lib/easy/sentences";
+import { splitAppendix } from "@/lib/html/splitAppendix";
+
+/** ページ用の整形済み HTML を返す（本文 + 附則） */
+export async function loadLawPayload(lawId: string) {
+  const law = await fetchLaw(lawId); // parseLawXml の戻り（型は環境依存）
+
+  // law から HTML を取り出す（最低限の互換: law.html / law.body / 文字列）
+  const html: string =
+    (law && (law.html || law.body)) ||
+    (typeof law === "string" ? law : "");
+
+  const { main, appendix } = splitAppendix(html);
+  const easy = await getEasyMap(lawId).catch(() => ({} as Record<string, string>));
+
+  return {
+    ok: true as const,
+    lawId,
+    title: (law && (law.title || law.name || "")) || "",
+    htmlMain: main,
+    htmlAppendix: appendix,
+    easy,
+  };
+}

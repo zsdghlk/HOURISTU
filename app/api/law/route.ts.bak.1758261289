@@ -1,0 +1,21 @@
+import { NextResponse } from "next/server";
+import { loadLawPayload } from "@/lib/law/loadLaw";
+
+export async function GET(
+  _req: Request,
+  { params }: { params: { lawId: string } }
+) {
+  const { lawId } = params;
+  try {
+    const payload = await loadLawPayload(lawId);
+    if (!payload.ok) {
+      return NextResponse.json({ ok: false, error: "LAW_NOT_FOUND", lawId }, { status: 404 });
+    }
+    return NextResponse.json(payload, { headers: { "Cache-Control": "no-store" } });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: "INTERNAL_ERROR", message: err?.message ?? String(err) },
+      { status: 500 }
+    );
+  }
+}
