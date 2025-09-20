@@ -1,11 +1,16 @@
 import LawContent from "@/features/accessible-law/LawContent";
 
 export default async function LawPage(context: { params: Promise<{ lawId: string }> }) {
-  const { lawId } = await context.params; // Next.js 15: await 必須
+  const { lawId } = await context.params; // Next.js 15: params は await 必須
+
+  // SSR はトンネルではなくローカルを叩く（認証HTMLを回避）
   const port = process.env.PORT ?? "3000";
   const base = `http://127.0.0.1:${port}`;
 
-  const res = await fetch(`${base}/api/law/${lawId}`, { cache: "no-store" });
+  const res = await fetch(`${base}/api/law/${lawId}`, {
+    cache: "no-store",
+  });
+
   const ctype = res.headers.get("content-type") || "";
   if (!ctype.includes("application/json")) {
     const text = await res.text();

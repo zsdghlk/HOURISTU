@@ -1,0 +1,211 @@
+import { fetchLawJson, toArray } from "@/lib/egov";
+
+/** Article を木構造から収集（どのキーでも潜る） */
+function collectArticles(node: any): any[] {
+  if (!node || typeof node !== "object") return [];
+  let out: any[] = [];
+  if ((node as any).Article) out = out.concat(toArray((node as any).Article));
+  for (const k of Object.keys(node)) {
+    const v = (node as any)[k];
+    if (v && typeof v === "object") {
+      const arr = Array.isArray(v) ? v : [v];
+      for (const c of arr) out = out.concat(collectArticles(c));
+    }
+  }
+  return out;
+}
+
+/** Sentence / ParagraphSentence を文字列化 */
+function collectSentences(node: any): string[] {
+  if (!node) return [];
+  if (typeof node === "string") return [node];
+  if (typeof node === "object") {
+    const out: string[] = [];
+    if ((node as any).Sentence) for (const s of toArray((node as any).Sentence)) out.push(...collectSentences(s));
+    if ((node as any).ParagraphSentence) for (const s of toArray((node as any).ParagraphSentence)) out.push(...collectSentences(s));
+    if ((node as any)._ && typeof (node as any)._ === "string") out.push((node as any)._);
+    return out;
+  }
+  return [];
+}
+
+/** 段落描画 */
+function renderParagraph(p: any): string {
+  const num =
+    (typeof p?.ParagraphNum === "string" ? p.ParagraphNum : p?.ParagraphNum?._) ||
+    (typeof p?.Num === "string" ? p.Num : p?.Num?._) || "";
+  const text = collectSentences(p?.ParagraphSentence ?? p?.Sentence ?? p).join("");
+  return `<p>${num ? `<span class="mr-2">${num}</span>` : ""}${text}</p>`;
+}
+
+/** 条見出し */
+function renderArticlePlain(a: any, fallbackKey: string): string {
+  const ttl =
+    (typeof a?.ArticleTitle === "string" ? a.ArticleTitle : a?.ArticleTitle?._) ||
+    (typeof a?.$?.Num === "string" ? a.$.Num : "") || fallbackKey;
+
+  const cap =
+    (typeof a?.ArticleCaption === "string" ? a.ArticleCaption : a?.ArticleCaption?._) || "";
+
+  const paragraphs = toArray(a?.Paragraph);
+  const bodyHtml = paragraphs.map(renderParagraph).join("");
+
+  const heading =
+    `<h3 class="text-lg font-semibold mt-8 mb-2">` +
+    `${ttl}${cap ? `　${cap}` : ""}` +
+    `</h3>`;
+  return heading + bodyHtml;
+}
+
+const sstr = (x: any) => (typeof x === "string" ? x : (x?._ ?? ""));
+
+/** 附則: SupplProvision ごとに区切り */
+
+
+export default async function LawPage(props: { params: Promise<{ lawId: string }> }) {
+  const { lawId } = await props.params;
+  const law = await fetchLawJson(lawId);
+  const body = law?.LawBody ?? {};
+  let title = "";
+  if (sstr((body as any)?.LawTitle)) {
+    title = sstr((body as any)?.LawTitle);
+    titleSource = "Body.LawTitle";
+  } else if (sstr((body as any)?.LawName)) {
+    title = sstr((body as any)?.LawName);
+    titleSource = "Body.LawName";
+  } else if (sstr((law as any)?.LawTitle)) {
+    title = sstr((law as any)?.LawTitle);
+    titleSource = "LawTitle";
+  } else if (sstr((law as any)?.LawName)) {
+    title = sstr((law as any)?.LawName);
+    titleSource = "LawName";
+  } else if (lawNum) {
+    title = `（${lawNum}）`;
+    titleSource = "LawNum";
+  } else {
+    title = "（無題の法令）";
+    titleSource = "fallback";
+  }
+  console.log("DBG title", { lawId, title, titleSource });
+
+  const title =
+    (typeof law?.LawTitle === "string" ? law?.LawTitle : (law?.LawTitle?._ ?? "")) ||
+    (typeof law?.LawName  === "string" ? law?.LawName  : (law?.LawName ?._ ?? "")) ||
+    "（無題の法令）";
+
+  const mainArticles = collectArticles(body?.MainProvision);
+  const mainHtml = mainArticles.map((a, i) => renderArticlePlain(a, String(i + 1))).join("");
+
+  const hasSuppl = !!body?.SupplProvision;
+  const supplHtml = renderSupplAll(body);
+
+  const hasAmend = !!body?.AmendProvision;
+
+  const aboutHtml =
+    hasSuppl || hasAmend
+      ? `<div id="about-law-sections" class="mb-6 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/30 p-4 text-sm leading-relaxed">
+           <p class="mb-2"><span class="font-bold text-blue-700 dark:text-blue-300">📖 本文</span> …… 法律の本体部分（第1条〜最終条）。</p>
+           ${hasSuppl ? `<p class="mb-0"><span class="font-bold text-green-700 dark:text-green-300">📌 附則</span> …… 施行期日・経過措置・特例など。改正のたびに附則が追加され、附則内でも「第一条」から番号が再開する場合があります。</p>` : ``}
+         </div>`
+      : "";
+
+  return (
+    <main className="mx-auto max-w-3xl p-6">
+      <h1 className="text-2xl font-bold mb-6">{title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: aboutHtml }} />
+      <article className="prose dark:prose-invert max-w-none">
+        <div dangerouslySetInnerHTML={{ __html: mainHtml }} />
+      </article>
+      {hasSuppl && (
+        <section className="mt-10 text-sm" id="suppl-section">
+          <h2 className="text-lg font-semibold mb-2">附則</h2>
+          <div className="prose dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: supplHtml }} />
+        </section>
+      )}
+    </main>
+  );
+}
+
+// ===== 汎用: グループ見出し（附則/改正経過 などで再利用） =====
+function renderGroupHeader(label: string, n: number, amendLawNum?: string): string {
+
+  const lawBadge = amendLawNum
+
+    ? `<span class="suppl-head ml-2">${amendLawNum}</span>`
+
+    : ``;
+
+
+
+  return `
+
+    <div class="mt-8 mb-4">
+
+      <span id="${label}-group-${n}" class="suppl-head font-bold">
+
+        ${label} 第${n}群
+
+      </span>
+
+      ${lawBadge}
+
+    </div>
+
+  `;
+
+}
+
+// ===== 附則を SupplProvision ごとに描画（全グループに見出し適用） =====
+function renderSupplAll(body: any): string {
+  const groups = toArray(body?.SupplProvision);
+  if (!groups || groups.length === 0) return "";
+
+  const sstr = (x: any) => (typeof x === "string" ? x : (x?._ ?? ""));
+  let html = "";
+  let n = 0;
+
+  for (const g of groups) {
+    n += 1;
+    const amendLawNum = sstr(g?.$?.AmendLawNum);
+    html += renderGroupHeader("附則", n, amendLawNum);
+
+    // 本文：Article 優先 → Paragraph → Sentence の順で
+    const arts = collectArticles(g);
+    if (arts.length > 0) {
+      html += arts.map((a: any, i: number) => renderArticlePlain(a, `附則${n}-${i + 1}`)).join("");
+    } else {
+      const paras = toArray(g?.Paragraph);
+      if (paras.length > 0) {
+        html += paras.map((p: any) => renderParagraph(p)).join("");
+      } else if (g?.ParagraphSentence || g?.Sentence) {
+        html += `<p>${collectSentences(g).join("")}</p>`;
+      }
+    }
+  }
+
+  return html;
+}
+
+// --- patched title decision ---
+let title = "";
+if (sstr((body as any)?.LawTitle)) {
+  title = sstr((body as any)?.LawTitle);
+  titleSource = "Body.LawTitle";
+} else if (sstr((body as any)?.LawName)) {
+  title = sstr((body as any)?.LawName);
+  titleSource = "Body.LawName";
+} else if (sstr((law as any)?.LawTitle)) {
+  title = sstr((law as any)?.LawTitle);
+  titleSource = "LawTitle";
+} else if (sstr((law as any)?.LawName)) {
+  title = sstr((law as any)?.LawName);
+  titleSource = "LawName";
+} else if (lawNum) {
+  title = `（${lawNum}）`;
+  titleSource = "LawNum";
+} else {
+  title = "（無題の法令）";
+  titleSource = "fallback";
+}
+console.log("DBG title", { lawId, title, titleSource });
+// --- end patched ---

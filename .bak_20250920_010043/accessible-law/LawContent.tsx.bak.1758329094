@@ -1,14 +1,10 @@
 "use client";
-import React from "react";
 import { useLawMode } from "./LawContext";
 
 export default function LawContent({ originalHtml }: { originalHtml: string }) {
   const { mode } = useLawMode();
-  // デバッグ
-  console.log("[LawContent] mode=", mode, "html_len=", originalHtml?.length ?? 0);
 
   if (mode === "easy") {
-    // まだ中身なし → 空の状態でOK（後で実装）
     return (
       <div className="p-4 text-gray-500 italic">
         （分かりやすい文は準備中です）
@@ -16,9 +12,10 @@ export default function LawContent({ originalHtml }: { originalHtml: string }) {
     );
   }
 
-  // 原文
   if (!originalHtml || originalHtml.length < 50) {
+    // 万一APIが空のときだけ
     return <div>本文を取得できませんでした</div>;
   }
+
   return <div dangerouslySetInnerHTML={{ __html: originalHtml }} />;
 }
