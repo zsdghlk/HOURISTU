@@ -12,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <header className="app-header fixed top-0 left-0 right-0 z-[99999] bg-white/95 backdrop-blur border-b">
+        <header className="site-header fixed top-0 left-0 right-0 z-50 bg-white shadow">
           <div className="container row">
             <Link href="/" className="brand">六法全書</Link>
             <nav className="nav">
@@ -21,10 +21,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
           </div>
         </header>
-        <div className="h-10 md:h-12" aria-hidden="true"></div>
-        <div style={{height: "var(--header-h)"}} aria-hidden="true"></div>
-        <div className="h-6" aria-hidden="true"></div>
-        <div className="h-6" aria-hidden="true"></div>
+        <div className="h-12" aria-hidden="true"></div>
+        <div className="h-12" aria-hidden="true"></div>
 
         <main className="container pt-16">{children}</main>
 

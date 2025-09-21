@@ -60,6 +60,7 @@ a:focus-visible{outline:2px solid color-mix(in oklab, var(--primary) 40%, transp
 .chip:hover{background:#fff}
 
 /* === ヘッダー / フッター === */
+.site-header{ position:fixed; top:0; left:0; right:0; z-index:1000; background:#fff; backdrop-filter:saturate(180%) blur(6px); border-bottom:1px solid var(--border); }
 .site-header .row{display:flex;align-items:center;height:56px}
 .brand{font-weight:700;color:var(--primary);text-decoration:none}
 .nav{display:none;margin-left:32px;gap:20px}
@@ -263,6 +264,14 @@ h3[id^="改正経過-group-"] a{
 }
 
 /* ===== ヘッダーを常時表示＆仕切り ===== */
+.site-header{
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: #fff;
+  backdrop-filter: saturate(180%) blur(6px);
+  border-bottom: 1px solid var(--border);
+}
 .site-header .nav{ display: flex; align-items: center; gap: 12px; }
 .site-header .nav .sep{ opacity:.6; margin:0 8px; user-select:none; }
 #law-tabs-slot{ display: inline-flex; align-items: center; gap: 8px; }
@@ -280,47 +289,3 @@ h3[id^="改正経過-group-"] a{
 
 /* ボタンの背丈をリンクと近づける */
 .site-header .nav button{ height:36px; line-height:34px; }
-.app-header{ transform: none !important; }
-
-/* --- tighten top spacing under fixed header --- */
-main > *:first-child { margin-top: 0 !important; }
-main h1:first-child,
-main h2:first-child { margin-top: .25rem !important; }
-
-/* --- compress top spacing even more --- */
-main > *:first-child { margin-top: 0 !important; }
-main h1:first-child,
-main h2:first-child { margin-top: 0 !important; }
-
-/* --- no top margin at all --- */
-main > *:first-child { margin-top: 0 !important; padding-top: 0 !important; }
-main h1:first-child,
-main h2:first-child { margin-top: 0 !important; padding-top: 0 !important; }
-
-/* --- 強制ゼロ余白（最上段用）--- */
-.site-header,
-main,
-main > *:first-child {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-/* ==== fixedヘッダー安定化：祖先の影響を無効化 ==== */
-html, body { overflow: visible !important; }
-main { transform: none !important; will-change: auto !important; }
-.app-header { transform: none !important; filter: none; }
-
-/* ヘッダー高さぶんのスペーサー（24〜40pxで好みに調整） */
-:root { --header-h: 40px; }
-body > .container:first-of-type { padding-top: var(--header-h); }
-
-/* === keep header fixed at all times === */
-.app-header{ position:fixed; top:0; left:0; right:0; z-index:99999;
-  background:#fff; border-bottom:1px solid var(--border);
-  backdrop-filter:saturate(180%) blur(6px);
-}
-/* 祖先の overflow/transform が fixed を壊すのを防ぐ */
-html, body { height:auto; overflow:visible !important; }
-main, .container, .row { overflow:visible !important; transform:none !important; will-change:auto !important; }
-/* 古い sticky 指定を無効化（残骸対策） */
-.site-header{ position:static !important; }

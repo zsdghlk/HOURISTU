@@ -48,7 +48,7 @@ export default function LawLayout({ children }: { children: React.ReactNode }) {
       <HeaderPortal>
         <LawTabsInline />
       </HeaderPortal>
-      <div className="px-4 pb-6 pt-0">{children}</div>
+      <div className="p-4">{children}</div>
     </LawProvider>
   );
 }

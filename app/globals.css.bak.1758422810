@@ -313,14 +313,3 @@ main { transform: none !important; will-change: auto !important; }
 /* ヘッダー高さぶんのスペーサー（24〜40pxで好みに調整） */
 :root { --header-h: 40px; }
 body > .container:first-of-type { padding-top: var(--header-h); }
-
-/* === keep header fixed at all times === */
-.app-header{ position:fixed; top:0; left:0; right:0; z-index:99999;
-  background:#fff; border-bottom:1px solid var(--border);
-  backdrop-filter:saturate(180%) blur(6px);
-}
-/* 祖先の overflow/transform が fixed を壊すのを防ぐ */
-html, body { height:auto; overflow:visible !important; }
-main, .container, .row { overflow:visible !important; transform:none !important; will-change:auto !important; }
-/* 古い sticky 指定を無効化（残骸対策） */
-.site-header{ position:static !important; }

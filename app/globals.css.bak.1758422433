@@ -263,6 +263,14 @@ h3[id^="改正経過-group-"] a{
 }
 
 /* ===== ヘッダーを常時表示＆仕切り ===== */
+.site-header{
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: #fff;
+  backdrop-filter: saturate(180%) blur(6px);
+  border-bottom: 1px solid var(--border);
+}
 .site-header .nav{ display: flex; align-items: center; gap: 12px; }
 .site-header .nav .sep{ opacity:.6; margin:0 8px; user-select:none; }
 #law-tabs-slot{ display: inline-flex; align-items: center; gap: 8px; }
@@ -304,23 +312,3 @@ main > *:first-child {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
-
-/* ==== fixedヘッダー安定化：祖先の影響を無効化 ==== */
-html, body { overflow: visible !important; }
-main { transform: none !important; will-change: auto !important; }
-.app-header { transform: none !important; filter: none; }
-
-/* ヘッダー高さぶんのスペーサー（24〜40pxで好みに調整） */
-:root { --header-h: 40px; }
-body > .container:first-of-type { padding-top: var(--header-h); }
-
-/* === keep header fixed at all times === */
-.app-header{ position:fixed; top:0; left:0; right:0; z-index:99999;
-  background:#fff; border-bottom:1px solid var(--border);
-  backdrop-filter:saturate(180%) blur(6px);
-}
-/* 祖先の overflow/transform が fixed を壊すのを防ぐ */
-html, body { height:auto; overflow:visible !important; }
-main, .container, .row { overflow:visible !important; transform:none !important; will-change:auto !important; }
-/* 古い sticky 指定を無効化（残骸対策） */
-.site-header{ position:static !important; }

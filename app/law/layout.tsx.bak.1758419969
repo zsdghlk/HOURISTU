@@ -1,0 +1,54 @@
+"use client";
+import React from "react";
+import { LawProvider, useLawMode } from "@/features/accessible-law/LawContext";
+import HeaderPortal from "@/features/accessible-law/HeaderPortal";
+import { usePathname } from "next/navigation";
+import { ROKUPO } from "@/lib/rokupo";
+
+function useCurrentLawTitle() {
+  const pathname = usePathname();
+  const lawId = pathname?.split("/").filter(Boolean).pop() ?? "";
+  const hit = ROKUPO.find(x => x.lawId === lawId);
+  return hit?.title ?? "";
+}
+
+function LawTabsInline() {
+  const { mode, setMode } = useLawMode();
+  const lawTitle = useCurrentLawTitle();
+  const base = "law-tab no-underline";
+
+  return (
+    <div className="law-tabs-inline">
+      {/* 並び： … ホーム ｜ 法律名 ｜ 原文 分かりやすい */}
+      <span className="sep">｜</span>
+      {lawTitle && <span className="law-current-title">{lawTitle}</span>}
+      <span className="sep">｜</span>
+
+      <button
+        onClick={() => setMode("original")}
+        className={base}
+        aria-pressed={mode === "original"}
+      >
+        原文
+      </button>
+      <button
+        onClick={() => setMode("easy")}
+        className={base}
+        aria-pressed={mode === "easy"}
+      >
+        分かりやすい
+      </button>
+    </div>
+  );
+}
+
+export default function LawLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <LawProvider>
+      <HeaderPortal>
+        <LawTabsInline />
+      </HeaderPortal>
+      <div className="p-4">{children}</div>
+    </LawProvider>
+  );
+}
