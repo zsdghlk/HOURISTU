@@ -1,0 +1,37 @@
+"use client";
+import React from "react";
+import { LawProvider, useLawMode } from "@/features/accessible-law/LawContext";
+
+function LawTabs() {
+  const { mode, setMode } = useLawMode();
+
+  const Button = ({ label, keyName }: { label: string; keyName: "original" | "easy" }) => (
+    <button
+      onClick={() => setMode(keyName)}
+      className={`px-8 py-4 text-xl rounded-xl font-bold shadow transition-colors ${
+        mode === keyName ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+      }`}
+      aria-pressed={mode === keyName}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b">
+      <div className="max-w-5xl mx-auto flex gap-3 justify-center py-3 px-4">
+        <Button label="原文" keyName="original" />
+        <Button label="分かりやすい" keyName="easy" />
+      </div>
+    </div>
+  );
+}
+
+export default function LawLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <LawProvider>
+      <LawTabs />
+      <div className="max-w-5xl mx-auto p-4">{children}</div>
+    </LawProvider>
+  );
+}

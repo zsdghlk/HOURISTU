@@ -13,16 +13,10 @@ export default async function LawPage(context: { params: Promise<{ lawId: string
   }
 
   const data = await res.json();
-    const title = data?.law?.title ?? data?.law?.lawTitle ?? "（無題）";
   const originalHtml =
     data?.law?.html ??
     data?.htmlMain ??
     "<p>本文を取得できませんでした</p>";
 
-  return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <LawContent originalHtml={originalHtml} />
-      </div>
-    );
+  return <LawContent originalHtml={originalHtml} />;
 }

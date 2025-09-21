@@ -17,7 +17,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="container row">
             <Link href="/" className="brand">六法全書</Link>
             <nav className="nav">
-              <span id="law-tabs-slot" />
               <Link href="/" className="no-underline">ホーム</Link>
               {/* 法令一覧は非表示（削除） */}
             </nav>

@@ -40,8 +40,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ lawId: string 
 
     const law = await fetchLawJson(lawId);
 
-    const rawTitle = law?.LawBody?.LawTitle || law?.LawTitle || law?.LawName || law?.title || "（無題の法令）";
-      const title = typeof rawTitle === "string" ? rawTitle : (typeof rawTitle?._ === "string" ? rawTitle._ : String(rawTitle));
+    const title =
+      law?.LawBody?.LawTitle ||
+      law?.LawTitle ||
+      law?.LawName ||
+      law?.title ||
+      "（無題の法令）";
 
     // 前文
     let html = renderPreambleHtml(law);

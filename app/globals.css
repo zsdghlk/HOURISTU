@@ -1,3 +1,4 @@
+@import "tailwindcss";
 /* === 基本トークン === */
 :root{
   --primary:#007BFF;   /* メインブルー */
@@ -231,4 +232,33 @@ h3[id^="改正経過-group-"] a{
 /* “下線”用の細い横線divは子要素として出てくるので子セレクタで潰す */
 .suppl-head > div {
   display: none !important;
+}
+
+/* --- law tabs: ヘッダー内に横並びで表示し、ホームと同じ高さ感に揃える --- */
+.site-header .nav {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+#law-tabs-slot { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ボタンは a と同程度のサイズ感（行高/左右余白） */
+.site-header .nav .law-tab{
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 36px;                 /* 「ホーム」と同じ背丈に近づける */
+  line-height: 34px;
+  padding: 0 14px;              /* リンク相当の左右余白 */
+  font: inherit;
+  cursor: pointer;
+}
+.site-header .nav .law-tab[aria-pressed="true"]{
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.site-header .nav .law-tab:hover{
+  background: #eef2ff;
 }
