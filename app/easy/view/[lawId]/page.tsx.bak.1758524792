@@ -1,8 +1,8 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 type Easy={lawId:string;count:number;items:{id:string;text:string;easy?:string}[]};
 export default function Page({params}:{params:{lawId:string}}){
-  const { lawId } = use(params);
+  const {lawId}=params as any;
   const [data,setData]=useState<Easy|null>(null);
   useEffect(()=>{(async()=>{try{const r=await fetch(`/easy/${lawId}.json`); if(r.ok)setData(await r.json());}catch{}})();},[lawId]);
   return <div className="max-w-3xl mx-auto p-6 space-y-4">
