@@ -1,0 +1,16 @@
+{
+  "lawId": "TEST_MULTI",
+  "count": 2,
+  "items": [
+    {
+      "id": "1",
+      "text": "原文A",
+      "easy": "やさしいA"
+    },
+    {
+      "id": "2",
+      "text": "原文B",
+      "easy": "やさしいB"
+    }
+  ]
+}
